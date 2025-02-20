@@ -9,7 +9,7 @@ const handleResponse = async (response: Response) => {
       throw new Error(
         errorData.message || `HTTP error! status: ${response.status}`
       );
-    } catch (e) {
+    } catch {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
   }
