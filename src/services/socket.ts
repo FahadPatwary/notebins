@@ -11,14 +11,28 @@ class SocketService {
   private constructor() {
     this.socket = io(SOCKET_URL, {
       transports: ["websocket", "polling"],
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: 5,
+      withCredentials: true,
+      forceNew: true,
+      timeout: 10000,
     });
 
     this.socket.on("connect", () => {
       console.log("Connected to socket server");
     });
 
+    this.socket.on("connect_error", (error) => {
+      console.error("Socket connection error:", error);
+    });
+
     this.socket.on("disconnect", () => {
       console.log("Disconnected from socket server");
+    });
+
+    this.socket.on("error", (error) => {
+      console.error("Socket error:", error);
     });
   }
 
@@ -30,7 +44,14 @@ class SocketService {
   }
 
   public joinNote(noteId: string) {
-    this.socket.emit("note:join", noteId);
+    if (this.socket.connected) {
+      this.socket.emit("note:join", noteId);
+    } else {
+      this.socket.connect();
+      this.socket.once("connect", () => {
+        this.socket.emit("note:join", noteId);
+      });
+    }
   }
 
   public leaveNote(noteId: string) {
@@ -38,7 +59,9 @@ class SocketService {
   }
 
   public updateNote(update: NoteUpdate) {
-    this.socket.emit("note:update", update);
+    if (this.socket.connected) {
+      this.socket.emit("note:update", update);
+    }
   }
 
   public onNoteUpdate(callback: (update: NoteUpdate) => void) {
@@ -51,6 +74,12 @@ class SocketService {
 
   public disconnect() {
     this.socket.disconnect();
+  }
+
+  public reconnect() {
+    if (!this.socket.connected) {
+      this.socket.connect();
+    }
   }
 }
 
