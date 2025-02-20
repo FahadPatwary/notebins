@@ -1,3 +1,4 @@
+import type { Socket } from "socket.io-client";
 import { io } from "socket.io-client";
 import { NoteUpdate } from "../types";
 
@@ -8,7 +9,10 @@ class SocketService {
   private static instance: SocketService;
 
   private constructor() {
-    this.socket = io(SOCKET_URL);
+    this.socket = io(SOCKET_URL, {
+      transports: ["websocket", "polling"],
+    });
+
     this.socket.on("connect", () => {
       console.log("Connected to socket server");
     });
