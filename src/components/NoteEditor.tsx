@@ -170,11 +170,16 @@ export const NoteEditor = () => {
         <div className="w-full px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
+              <img
+                src="/favicon.svg"
+                alt="NoteBins Logo"
+                className="w-8 h-8"
+              />
               <a
                 href="/"
                 className="text-xl font-semibold text-gray-900 hover:text-gray-700 transition-colors"
               >
-                Notebins
+                NoteBins
               </a>
               <div className="h-4 w-px bg-gray-200" />
               <span className="text-sm text-gray-500 animate-fade hidden sm:inline-block">
