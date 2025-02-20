@@ -13,7 +13,7 @@ export const NoteEditor = () => {
   const [shareUrl, setShareUrl] = useState("");
   const [showCopied, setShowCopied] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isLocalUpdate = useRef(false);
 
@@ -29,6 +29,9 @@ export const NoteEditor = () => {
         if (loadedNote) {
           setNote(loadedNote);
           setContent(loadedNote.content);
+          if (editorRef.current) {
+            editorRef.current.innerHTML = loadedNote.content;
+          }
           setShareUrl(window.location.href);
           setLastSaved(new Date(loadedNote.updatedAt));
         } else {
@@ -48,41 +51,40 @@ export const NoteEditor = () => {
     };
   }, [id, navigate]);
 
-  const handleContentChange = useCallback(
-    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const newContent = event.target.value;
-      if (newContent === content) return;
+  const handleContentChange = useCallback(() => {
+    if (!editorRef.current) return;
 
-      isLocalUpdate.current = true;
-      setContent(newContent);
+    const newContent = editorRef.current.innerHTML;
+    if (newContent === content) return;
 
-      // Clear existing timeout
-      if (updateTimeoutRef.current) {
-        clearTimeout(updateTimeoutRef.current);
+    isLocalUpdate.current = true;
+    setContent(newContent);
+
+    // Clear existing timeout
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current);
+    }
+
+    // Debounce the update
+    updateTimeoutRef.current = setTimeout(async () => {
+      if (!id) return;
+
+      setIsSaving(true);
+      try {
+        await noteService.updateNote(id, newContent);
+        socketService.updateNote({
+          noteId: id,
+          content: newContent,
+        });
+        setLastSaved(new Date());
+      } catch (error) {
+        console.error("Error saving note:", error);
+      } finally {
+        setIsSaving(false);
+        isLocalUpdate.current = false;
       }
-
-      // Debounce the update
-      updateTimeoutRef.current = setTimeout(async () => {
-        if (!id) return;
-
-        setIsSaving(true);
-        try {
-          await noteService.updateNote(id, newContent);
-          socketService.updateNote({
-            noteId: id,
-            content: newContent,
-          });
-          setLastSaved(new Date());
-        } catch (error) {
-          console.error("Error saving note:", error);
-        } finally {
-          setIsSaving(false);
-          isLocalUpdate.current = false;
-        }
-      }, 300);
-    },
-    [id, content]
-  );
+    }, 300);
+  }, [id, content]);
 
   useEffect(() => {
     const handleNoteUpdate = (update: { noteId: string; content: string }) => {
@@ -90,20 +92,36 @@ export const NoteEditor = () => {
         update.noteId === id &&
         update.content !== content &&
         !isLocalUpdate.current &&
-        textareaRef.current
+        editorRef.current
       ) {
-        const textarea = textareaRef.current;
-        const selectionStart = textarea.selectionStart;
-        const selectionEnd = textarea.selectionEnd;
+        const selection = window.getSelection();
+        const range = selection?.getRangeAt(0);
+        const startOffset = range?.startOffset;
+        const endOffset = range?.endOffset;
 
+        editorRef.current.innerHTML = update.content;
         setContent(update.content);
         setLastSaved(new Date());
 
-        // Restore cursor position after content update
-        requestAnimationFrame(() => {
-          textarea.focus();
-          textarea.setSelectionRange(selectionStart, selectionEnd);
-        });
+        // Restore cursor position
+        if (
+          selection &&
+          range &&
+          startOffset !== undefined &&
+          endOffset !== undefined
+        ) {
+          const newRange = document.createRange();
+          newRange.setStart(
+            editorRef.current,
+            Math.min(startOffset, editorRef.current.childNodes.length)
+          );
+          newRange.setEnd(
+            editorRef.current,
+            Math.min(endOffset, editorRef.current.childNodes.length)
+          );
+          selection.removeAllRanges();
+          selection.addRange(newRange);
+        }
       }
     };
 
@@ -134,6 +152,7 @@ export const NoteEditor = () => {
 
   const formatText = (command: string, value?: string) => {
     document.execCommand(command, false, value);
+    handleContentChange();
   };
 
   if (!note && id) {
@@ -375,22 +394,20 @@ export const NoteEditor = () => {
       <main className="pt-28 min-h-screen">
         <div className="w-full px-4 sm:px-6 py-6 flex justify-center">
           <div className="w-[80vw] min-h-[calc(100vh-12rem)] bg-white shadow-sm rounded-lg">
-            <textarea
-              ref={textareaRef}
-              value={content}
-              onChange={handleContentChange}
-              className="w-full h-full p-6 md:p-8 focus:outline-none text-gray-900 text-base md:text-lg resize-none"
+            <div
+              ref={editorRef}
+              contentEditable
+              onInput={handleContentChange}
+              className="w-full h-full p-6 md:p-8 focus:outline-none text-gray-900 text-base md:text-lg"
               style={{
                 fontFamily:
                   'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
                 minHeight: "calc(100vh - 12rem)",
-                border: "none",
-                caretColor: "black",
+                whiteSpace: "pre-wrap",
+                overflowWrap: "break-word",
               }}
               spellCheck="true"
-              autoCorrect="on"
-              autoCapitalize="on"
-              placeholder="Start typing..."
+              data-placeholder="Start typing..."
             />
           </div>
         </div>
