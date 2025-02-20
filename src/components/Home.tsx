@@ -42,8 +42,9 @@ export const Home = () => {
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-[100vw] space-y-12 text-center px-4 sm:px-6 lg:px-8">
         <div className="space-y-6 max-w-3xl mx-auto">
+          <img src="/favicon.svg" alt="NoteBins Logo" className="w-24 h-24 mx-auto" />
           <h1 className="text-5xl font-light tracking-tight text-gray-900">
-            Note<span className="font-semibold">Share</span>
+            Note<span className="font-semibold">Bins</span>
           </h1>
           <p className="text-xl text-gray-600">
             Create and share notes instantly, no sign-up required.
