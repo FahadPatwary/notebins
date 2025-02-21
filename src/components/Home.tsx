@@ -13,11 +13,15 @@ export const Home = () => {
     try {
       setIsCreating(true);
       setError("");
-      const note = await noteService.createNote("");
+      const note = await noteService.createNote("Welcome to your new note!");
       navigate(`/${note.id}`);
     } catch (error) {
       console.error("Failed to create note:", error);
-      setError("Failed to create note. Please try again.");
+      if (error instanceof Error) {
+        setError(error.message);
+      } else {
+        setError("Failed to create note. Please try again.");
+      }
     } finally {
       setIsCreating(false);
     }

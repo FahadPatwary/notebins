@@ -155,7 +155,9 @@ export const noteService = {
         try {
           const errorData = await response.json();
           console.log('Note not found:', errorData.message);
-        } catch {}
+        } catch {
+          // Intentionally ignored
+        }
         return null;
       }
 
@@ -165,7 +167,9 @@ export const noteService = {
         try {
           const errorData = await response.json();
           errorMessage = errorData.message || errorMessage;
-        } catch {}
+        } catch {
+          // Intentionally ignored
+        }
         throw new Error(errorMessage);
       }
 
