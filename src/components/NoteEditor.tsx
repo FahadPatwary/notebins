@@ -67,72 +67,67 @@ export const NoteEditor = () => {
     }
   }, [pendingContent]);
 
-  useEffect(() => {
+  const loadNote = useCallback(async () => {
     if (!id) {
       navigate("/");
       return;
     }
 
-    const loadNote = async () => {
-      if (!id) {
+    try {
+      console.log("Loading note with ID:", id);
+      const loadedNote = await noteService.getNote(id);
+
+      // Handle note not found or invalid note data
+      if (!loadedNote) {
+        toast.error("Note not found");
         navigate("/");
         return;
       }
 
+      // Set note content and update UI
+      setNote(loadedNote);
+      setContent(loadedNote.content);
+      setPendingContent(loadedNote.content);
+      setShareUrl(window.location.href);
+      setLastSaved(new Date(loadedNote.updatedAt));
+      setError("");
+
+      // Check if note exists in library
       try {
-        console.log("Loading note with ID:", id);
-        const loadedNote = await noteService.getNote(id);
-
-        // Handle note not found or invalid note data
-        if (!loadedNote) {
-          toast.error("Note not found");
-          navigate("/");
-          return;
+        const existingNote = await noteService.checkExistingNote(id);
+        if (existingNote) {
+          setExistingNote(existingNote);
+          setIsNoteSaved(true);
+          toast(
+            "This note is already saved. Changes will update the existing note.",
+            {
+              icon: "ℹ️",
+              position: "bottom-right",
+              duration: 4000,
+            }
+          );
+        } else {
+          setExistingNote(null);
+          setIsNoteSaved(false);
         }
-
-        // Set note content and update UI
-        setNote(loadedNote);
-        setContent(loadedNote.content);
-        setPendingContent(loadedNote.content);
-        setShareUrl(window.location.href);
-        setLastSaved(new Date(loadedNote.updatedAt));
-        setError("");
-
-        // Check if note exists in library
-        try {
-          const existingNote = await noteService.checkExistingNote(id);
-          if (existingNote) {
-            setExistingNote(existingNote);
-            setIsNoteSaved(true);
-            toast(
-              "This note is already saved. Changes will update the existing note.",
-              {
-                icon: "ℹ️",
-                position: "bottom-right",
-                duration: 4000,
-              }
-            );
-          } else {
-            setExistingNote(null);
-            setIsNoteSaved(false);
-          }
-        } catch (error) {
-          console.error("Error checking existing note:", error);
-          // Don't throw here, as the main note content is already loaded
-        }
-      } catch (error: any) {
-        console.error("Error loading note:", error);
-        toast.error(error.message || "Error loading note. Please try again.");
+      } catch (error) {
+        console.error("Error checking existing note:", error);
+        // Don't throw here, as the main note content is already loaded
       }
-    };
+    } catch (error: any) {
+      console.error("Error loading note:", error);
+      toast.error(error.message || "Error loading note. Please try again.");
+    }
+  }, [id, navigate, setNote, setContent, setPendingContent, setShareUrl, setLastSaved, setError, setExistingNote, setIsNoteSaved]);
 
+  useEffect(() => {
     loadNote();
     socketService.joinNote(id);
 
     return () => {
       socketService.leaveNote(id);
     };
-  }, [id, navigate]);
+  }, [id, navigate, loadNote]);
 
   useEffect(() => {
     if (note?.createdAt) {

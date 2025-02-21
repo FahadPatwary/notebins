@@ -56,7 +56,7 @@ export const SavedNotes = () => {
       const savedNotes = await noteService.getSavedNotes();
 
       // Process notes to ensure consistent state
-      const processedNotes = savedNotes.map((note) => ({
+      const processedNotes = savedNotes.map((note: SavedNote) => ({
         ...note,
         contentLength: note.contentLength || 0,
         isCompressed: note.isCompressed || false,
@@ -64,7 +64,7 @@ export const SavedNotes = () => {
 
       // Sort notes by most recently updated
       const sortedNotes = processedNotes.sort(
-        (a, b) =>
+        (a: SavedNote, b: SavedNote) =>
           new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       );
 
