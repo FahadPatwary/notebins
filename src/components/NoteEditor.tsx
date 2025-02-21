@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import debounce from "lodash/debounce";
 import { toast } from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
 import type { SavedNote } from "../services/note";
@@ -61,22 +62,7 @@ export const NoteEditor = () => {
     alignment: "left",
   }));
 
-  // Memoize editor state to prevent unnecessary re-renders
-  const editorState = useMemo(
-    () => ({
-      note,
-      content,
-      shareUrl,
-      lastSaved,
-      error,
-      existingNote,
-      isNoteSaved,
-      isSaving,
-      isLoading,
-      timeRemaining,
-    }),
-    [note, content, shareUrl, lastSaved, error, existingNote, isNoteSaved, isSaving, isLoading, timeRemaining]
-  );
+
   const [pendingContent, setPendingContent] = useState<string | null>(null);
   const [savePrompt, setSavePrompt] = useState<SavePromptState>({
     isOpen: false,
@@ -243,18 +229,17 @@ export const NoteEditor = () => {
 
       // Execute update
       updateContent();
-    }, 100), // Reduced debounce time for better responsiveness
+    }, 100),
     [id, content, refs]
   );
-  }, [id, content]);
 
   useEffect(() => {
     const handleNoteUpdate = (update: { noteId: string; content: string }) => {
       if (
         update.noteId === id &&
         update.content !== content &&
-        !isLocalUpdate.current &&
-        editorRef.current
+        !refs.isLocalUpdate.current &&
+        refs.editorRef.current
       ) {
         try {
           // Save the current selection and cursor state
@@ -262,7 +247,7 @@ export const NoteEditor = () => {
           const selection = window.getSelection();
           
           // Only save selection if it's within our editor
-          if (selection?.rangeCount && editorRef.current.contains(selection.anchorNode)) {
+          if (selection?.rangeCount && refs.editorRef.current.contains(selection.anchorNode)) {
             savedSelection = {
               range: selection.getRangeAt(0),
               startContainer: selection.anchorNode,
@@ -273,7 +258,7 @@ export const NoteEditor = () => {
           }
 
           // Update the content
-          editorRef.current.innerHTML = update.content;
+          refs.editorRef.current.innerHTML = update.content;
           setContent(update.content);
           setLastSaved(new Date());
 
@@ -312,9 +297,9 @@ export const NoteEditor = () => {
                   return result;
                 };
 
-                if (!editorRef.current) return;
-                const newStartNode = findEquivalentNode(savedSelection.startContainer, editorRef.current);
-                const newEndNode = findEquivalentNode(savedSelection.endContainer, editorRef.current);
+                if (!refs.editorRef.current) return;
+                const newStartNode = findEquivalentNode(savedSelection.startContainer, refs.editorRef.current);
+                const newEndNode = findEquivalentNode(savedSelection.endContainer, refs.editorRef.current);
 
                 // Set the range with proper type checking
                 if (newStartNode && newEndNode) {
@@ -348,8 +333,8 @@ export const NoteEditor = () => {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (updateTimeoutRef.current) {
-        clearTimeout(updateTimeoutRef.current);
+      if (refs.updateTimeoutRef.current) {
+        clearTimeout(refs.updateTimeoutRef.current);
       }
     };
   }, []);
@@ -1057,7 +1042,7 @@ export const NoteEditor = () => {
         <div className="w-full px-4 sm:px-6 py-6 flex justify-center">
           <div className="w-[80vw] min-h-[calc(100vh-16rem)] bg-white shadow-sm rounded-lg">
             <div
-              ref={editorRef}
+              ref={refs.editorRef}
               contentEditable
               onInput={handleContentChange}
               className="w-full h-full p-6 md:p-8 focus:outline-none text-gray-900 text-base md:text-lg"
