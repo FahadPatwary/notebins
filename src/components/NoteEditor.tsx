@@ -71,6 +71,8 @@ export const NoteEditor = () => {
           setContent(loadedNote.content);
           if (editorRef.current) {
             editorRef.current.innerHTML = loadedNote.content;
+          }else{
+            console.log("editorRef.current is null - Fahad");
           }
           setShareUrl(window.location.href);
           setLastSaved(new Date(loadedNote.updatedAt));
