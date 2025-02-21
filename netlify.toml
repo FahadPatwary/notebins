@@ -7,3 +7,18 @@
   to = "/index.html"
   status = 200
   force = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "http://localhost:10000/api/:splat"
+  status = 200
+  force = true
+
+[dev]
+  command = "npm run dev"
+  targetPort = 5173
+  port = 8888
+  framework = "vite"
+
+[functions]
+  directory = "netlify/functions"
