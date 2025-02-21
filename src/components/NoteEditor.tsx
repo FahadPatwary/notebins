@@ -72,6 +72,7 @@ export const NoteEditor = () => {
         if (!loadedNote) {
           console.error('Note not found');
           toast.error('Note not found or could not be loaded');
+          navigate('/');
           return;
         }
 
@@ -115,8 +116,6 @@ export const NoteEditor = () => {
         } catch (error) {
           console.error('Error checking existing note:', error);
           // Don't throw here, as the main note content is already loaded
-        } else {
-          navigate("/");
         }
       } catch (error) {
         console.error("Error loading note:", error);
