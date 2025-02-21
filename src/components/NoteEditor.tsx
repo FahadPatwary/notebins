@@ -82,27 +82,34 @@ export const NoteEditor = () => {
           if (editorRef.current) {
             editorRef.current.innerHTML = pendingContent;
             console.log("Content set successfully");
+
+            // Restore selection if it was inside the editor
+            if (
+              savedRange &&
+              editorRef.current.contains(savedRange.commonAncestorContainer)
+            ) {
+              try {
+                selection?.removeAllRanges();
+                selection?.addRange(savedRange);
+              } catch (error) {
+                console.debug("Could not restore selection:", error);
+              }
+            }
+
+            setPendingContent(null);
           }
         } catch (error) {
           console.error("Error setting editor content:", error);
         }
       }, 50);
-
-      // Restore selection if it was inside the editor
-      if (
-        savedRange &&
-        editorRef.current.contains(savedRange.commonAncestorContainer)
-      ) {
-        try {
-          selection?.removeAllRanges();
-          selection?.addRange(savedRange);
-        } catch (error) {
-          console.debug("Could not restore selection:", error);
-        }
-      }
-
-      setPendingContent(null);
     }
+
+    // Cleanup timeout on unmount or when pendingContent changes
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, [pendingContent]);
 
   const loadNote = useCallback(async () => {
