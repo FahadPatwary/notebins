@@ -16,6 +16,14 @@ interface FormatState {
   alignment: string;
 }
 
+interface SavePromptState {
+  isOpen: boolean;
+  title: string;
+  password: string;
+  showPassword: boolean;
+  error: string;
+}
+
 export const NoteEditor = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -39,13 +47,15 @@ export const NoteEditor = () => {
     alignment: "left",
   });
   const [isNoteSaved, setIsNoteSaved] = useState(false);
-  const [showSavePrompt, setShowSavePrompt] = useState(false);
-  const [saveTitle, setSaveTitle] = useState("");
-  const [isConnected, setIsConnected] = useState(
-    socketService.getConnectionStatus()
-  );
   const [existingNote, setExistingNote] = useState<SavedNote | null>(null);
   const [error, setError] = useState("");
+  const [savePrompt, setSavePrompt] = useState<SavePromptState>({
+    isOpen: false,
+    title: "",
+    password: "",
+    showPassword: false,
+    error: "",
+  });
 
   useEffect(() => {
     if (!id) {
@@ -71,7 +81,6 @@ export const NoteEditor = () => {
             console.log("Found existing note:", existingNote.title);
             setExistingNote(existingNote);
             setIsNoteSaved(true);
-            setSaveTitle(existingNote.title);
 
             // Show toast notification for existing note
             toast(
@@ -86,7 +95,6 @@ export const NoteEditor = () => {
             // Reset state for new notes
             setExistingNote(null);
             setIsNoteSaved(false);
-            setSaveTitle("");
           }
         } else {
           navigate("/");
@@ -281,11 +289,20 @@ export const NoteEditor = () => {
       const existingNote = await noteService.checkExistingNote(id);
 
       if (existingNote) {
-        // If note exists, update it with existing title
-        handleSaveConfirm(existingNote.title);
+        // If note exists, update it with existing title and password status
+        handleSaveConfirm({
+          title: existingNote.title,
+          password: existingNote.isPasswordProtected ? "" : undefined,
+        });
       } else {
-        // If new note, show prompt for title
-        setShowSavePrompt(true);
+        // If new note, show prompt for title and optional password
+        setSavePrompt({
+          isOpen: true,
+          title: "",
+          password: "",
+          showPassword: false,
+          error: "",
+        });
       }
     } catch (error) {
       console.error("Error checking existing note:", error);
@@ -293,31 +310,34 @@ export const NoteEditor = () => {
     }
   };
 
-  const handleSaveConfirm = async (title: string) => {
+  const handleSaveConfirm = async ({
+    title,
+    password,
+  }: {
+    title: string;
+    password?: string;
+  }) => {
     if (!id) return;
 
     try {
       setIsSavingToLibrary(true);
       setError("");
 
-      // Check if note already exists before saving
-      const existingNote = await noteService.checkExistingNote(id);
-
       const savedNote = await noteService.saveNoteToLibrary({
-        title: existingNote ? existingNote.title : title,
+        title,
         noteId: id,
         content: content || "",
+        password,
       });
 
       // Update all relevant state
       setIsSavingToLibrary(false);
-      setShowSavePrompt(false);
+      setSavePrompt((prev) => ({ ...prev, isOpen: false }));
       setShowSaveSuccess(true);
       setIsNoteSaved(true);
       setExistingNote(savedNote);
-      setSaveTitle(savedNote.title);
 
-      // Show appropriate toast message based on server response
+      // Show appropriate toast message
       toast.success(
         savedNote.isNew
           ? "Note saved successfully!"
@@ -328,7 +348,6 @@ export const NoteEditor = () => {
         }
       );
 
-      // Hide success message after 2 seconds
       setTimeout(() => {
         setShowSaveSuccess(false);
       }, 2000);
@@ -357,9 +376,8 @@ export const NoteEditor = () => {
     }
   };
 
-  // Update the save prompt modal
   const renderSavePrompt = () => {
-    if (!showSavePrompt) return null;
+    if (!savePrompt.isOpen) return null;
 
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -372,18 +390,103 @@ export const NoteEditor = () => {
               {error}
             </div>
           )}
-          <input
-            type="text"
-            placeholder="Enter note title"
-            value={saveTitle}
-            onChange={(e) => setSaveTitle(e.target.value)}
-            className="w-full p-2 border rounded mb-4 dark:bg-gray-700 dark:border-gray-600"
-            disabled={isSavingToLibrary}
-          />
-          <div className="flex justify-end space-x-3">
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="title"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
+              >
+                Title
+              </label>
+              <input
+                id="title"
+                type="text"
+                placeholder="Enter note title"
+                value={savePrompt.title}
+                onChange={(e) =>
+                  setSavePrompt((prev) => ({ ...prev, title: e.target.value }))
+                }
+                className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600"
+                disabled={isSavingToLibrary}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Password Protection
+              </label>
+              <div className="relative">
+                <input
+                  type={savePrompt.showPassword ? "text" : "password"}
+                  placeholder="Optional password"
+                  value={savePrompt.password}
+                  onChange={(e) =>
+                    setSavePrompt((prev) => ({
+                      ...prev,
+                      password: e.target.value,
+                    }))
+                  }
+                  className="w-full p-2 border rounded dark:bg-gray-700 dark:border-gray-600 pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSavePrompt((prev) => ({
+                      ...prev,
+                      showPassword: !prev.showPassword,
+                    }))
+                  }
+                  className="absolute inset-y-0 right-0 px-3 flex items-center"
+                >
+                  {savePrompt.showPassword ? (
+                    <svg
+                      className="h-5 w-5 text-gray-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                      />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                      />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="h-5 w-5 text-gray-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                      />
+                    </svg>
+                  )}
+                </button>
+              </div>
+              <p className="mt-1 text-sm text-gray-500">
+                {savePrompt.password
+                  ? "Note will be password protected"
+                  : "Leave empty for no password protection"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3 mt-6">
             <button
               onClick={() => {
-                setShowSavePrompt(false);
+                setSavePrompt((prev) => ({ ...prev, isOpen: false }));
                 setError("");
               }}
               className="px-4 py-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
@@ -392,10 +495,15 @@ export const NoteEditor = () => {
               Cancel
             </button>
             <button
-              onClick={() => handleSaveConfirm(saveTitle)}
-              disabled={!saveTitle.trim() || isSavingToLibrary}
+              onClick={() =>
+                handleSaveConfirm({
+                  title: savePrompt.title,
+                  password: savePrompt.password || undefined,
+                })
+              }
+              disabled={!savePrompt.title.trim() || isSavingToLibrary}
               className={`px-4 py-2 rounded ${
-                !saveTitle.trim() || isSavingToLibrary
+                !savePrompt.title.trim() || isSavingToLibrary
                   ? "bg-blue-300 cursor-not-allowed"
                   : "bg-blue-500 hover:bg-blue-600"
               } text-white flex items-center space-x-2`}
@@ -504,28 +612,21 @@ export const NoteEditor = () => {
   const renderConnectionStatus = () => (
     <div
       className={`fixed bottom-4 right-4 px-3 py-1 rounded-full flex items-center space-x-2 ${
-        isConnected ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+        socketService.getConnectionStatus()
+          ? "bg-green-100 text-green-800"
+          : "bg-red-100 text-red-800"
       }`}
     >
       <div
         className={`w-2 h-2 rounded-full ${
-          isConnected ? "bg-green-500" : "bg-red-500"
+          socketService.getConnectionStatus() ? "bg-green-500" : "bg-red-500"
         }`}
       />
       <span className="text-sm">
-        {isConnected ? "Connected" : "Reconnecting..."}
+        {socketService.getConnectionStatus() ? "Connected" : "Reconnecting..."}
       </span>
     </div>
   );
-
-  // Add connection status monitoring
-  useEffect(() => {
-    const checkConnection = setInterval(() => {
-      setIsConnected(socketService.getConnectionStatus());
-    }, 1000);
-
-    return () => clearInterval(checkConnection);
-  }, []);
 
   if (!note && id) {
     return (

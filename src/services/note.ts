@@ -8,18 +8,21 @@ export interface SavedNote {
   url: string;
   createdAt: string;
   updatedAt: string;
-  isCompressed?: boolean;
-  contentLength?: number;
+  expiresAt: string;
+  contentLength: number;
+  isCompressed: boolean;
+  isPasswordProtected: boolean;
   isNew?: boolean;
 }
 
-interface SaveNoteOptions {
+interface SaveNoteParams {
   title: string;
   noteId: string;
   content: string;
+  password?: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:10000";
 
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
@@ -132,42 +135,39 @@ export const noteService = {
     }
   },
 
-  async saveNoteToLibrary({
-    title,
-    noteId,
-    content,
-  }: SaveNoteOptions): Promise<SavedNote> {
+  async saveNoteToLibrary(params: SaveNoteParams): Promise<SavedNote> {
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      };
+
+      // Add password header if provided
+      if (params.password) {
+        headers["X-Note-Password"] = params.password;
+      }
+
+      // Add URL to params
+      const url = window.location.href;
+      const paramsWithUrl = { ...params, url };
+
       const response = await fetch(`${API_URL}/api/saved-notes`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
+        headers,
         mode: "cors",
         credentials: "include",
-        body: JSON.stringify({
-          title,
-          noteId,
-          content,
-          url: window.location.href,
-        }),
+        body: JSON.stringify(paramsWithUrl),
       });
 
-      const result = await handleResponse(response);
-
-      // If this was an update (status 200) or new creation (status 201)
-      if (response.status === 200 || response.status === 201) {
-        return result;
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to save note");
       }
 
-      throw new Error("Unexpected response from server");
+      return response.json();
     } catch (error) {
-      console.error("Failed to save note to library:", error);
-      if (error instanceof Error) {
-        throw new Error(`Failed to save note to library: ${error.message}`);
-      }
-      throw new Error("Failed to save note to library. Please try again.");
+      console.error("Error saving note to library:", error);
+      throw error;
     }
   },
 
@@ -192,13 +192,19 @@ export const noteService = {
     }
   },
 
-  async deleteSavedNote(id: string): Promise<void> {
+  async deleteSavedNote(id: string, password?: string): Promise<void> {
     try {
+      const headers: Record<string, string> = {
+        Accept: "application/json",
+      };
+
+      if (password) {
+        headers["X-Note-Password"] = password;
+      }
+
       const response = await fetch(`${API_URL}/api/saved-notes/${id}`, {
         method: "DELETE",
-        headers: {
-          Accept: "application/json",
-        },
+        headers,
         mode: "cors",
         credentials: "include",
       });

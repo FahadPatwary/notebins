@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { noteService } from "../services/note";
+import { PasswordPrompt } from "./PasswordPrompt";
 
 interface SavedNote {
   _id: string;
@@ -13,9 +14,16 @@ interface SavedNote {
   isCompressed?: boolean;
   contentLength?: number;
   isNew?: boolean;
+  isPasswordProtected: boolean;
 }
 
 type SortOption = "newest" | "oldest" | "title" | "size";
+
+interface PasswordPromptState {
+  isOpen: boolean;
+  noteId: string;
+  error: string;
+}
 
 export const SavedNotes = () => {
   const navigate = useNavigate();
@@ -27,6 +35,11 @@ export const SavedNotes = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortOption>("newest");
+  const [passwordPrompt, setPasswordPrompt] = useState<PasswordPromptState>({
+    isOpen: false,
+    noteId: "",
+    error: "",
+  });
 
   useEffect(() => {
     loadSavedNotes();
@@ -65,16 +78,44 @@ export const SavedNotes = () => {
     }
   };
 
-  const handleDeleteNote = async (id: string) => {
+  const handleDeleteNote = async (note: SavedNote) => {
+    if (note.isPasswordProtected) {
+      setPasswordPrompt({
+        isOpen: true,
+        noteId: note._id,
+        error: "",
+      });
+      return;
+    }
+
     try {
       setIsDeleting(true);
-      await noteService.deleteSavedNote(id);
-      await loadSavedNotes(); // Refresh the entire list
+      await noteService.deleteSavedNote(note._id);
+      await loadSavedNotes();
       setShowDeleteModal(false);
       setNoteToDelete(null);
     } catch (error) {
       console.error("Error deleting note:", error);
       setError("Failed to delete note. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handlePasswordSubmit = async (password: string) => {
+    try {
+      setIsDeleting(true);
+      await noteService.deleteSavedNote(passwordPrompt.noteId, password);
+      await loadSavedNotes();
+      setPasswordPrompt({ isOpen: false, noteId: "", error: "" });
+      setShowDeleteModal(false);
+      setNoteToDelete(null);
+    } catch (error) {
+      console.error("Error deleting note:", error);
+      setPasswordPrompt((prev) => ({
+        ...prev,
+        error: "Incorrect password. Please try again.",
+      }));
     } finally {
       setIsDeleting(false);
     }
@@ -210,7 +251,7 @@ export const SavedNotes = () => {
             Cancel
           </button>
           <button
-            onClick={() => noteToDelete && handleDeleteNote(noteToDelete._id)}
+            onClick={() => noteToDelete && handleDeleteNote(noteToDelete)}
             disabled={isDeleting}
             className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-colors"
           >
@@ -389,6 +430,24 @@ export const SavedNotes = () => {
                               Compressed
                             </span>
                           )}
+                          {note.isPasswordProtected && (
+                            <span className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium bg-purple-100 text-purple-800 rounded-md">
+                              <svg
+                                className="w-3.5 h-3.5 mr-1"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  strokeWidth={2}
+                                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8V7a4 4 0 00-8 0v4h8z"
+                                />
+                              </svg>
+                              Password Protected
+                            </span>
+                          )}
                           <span className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium bg-blue-100 text-blue-800 rounded-md">
                             <svg
                               className="w-3.5 h-3.5 mr-1"
@@ -501,6 +560,16 @@ export const SavedNotes = () => {
       </footer>
 
       {renderDeleteModal()}
+      <PasswordPrompt
+        isOpen={passwordPrompt.isOpen}
+        onClose={() => {
+          setPasswordPrompt({ isOpen: false, noteId: "", error: "" });
+          setShowDeleteModal(false);
+          setNoteToDelete(null);
+        }}
+        onSubmit={handlePasswordSubmit}
+        error={passwordPrompt.error}
+      />
     </div>
   );
 };
