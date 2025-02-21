@@ -252,22 +252,48 @@ export const NoteEditor = () => {
                 const newRange = document.createRange();
                 
                 // Find equivalent positions in the new DOM
-                const findEquivalentNode = (oldNode: Node, root: Node): Node => {
-                  if (!oldNode.parentNode) return root;
-                  const parent = oldNode.parentNode;
-                  const index = Array.from(parent.childNodes).indexOf(oldNode);
-                  return root.childNodes[Math.min(index, root.childNodes.length - 1)];
+                const findEquivalentNode = (oldNode: Node | null, root: HTMLElement): Node => {
+                  if (!oldNode || !oldNode.parentNode) return root;
+                  
+                  // Get the path from oldNode to its root
+                  const path: number[] = [];
+                  let current: Node | null = oldNode;
+                  while (current && current.parentNode && current !== root) {
+                    const parent: Node = current.parentNode;
+                    const index = Array.from(parent.childNodes).findIndex(node => node === current);
+                    if (index !== -1) {
+                      path.unshift(index);
+                    }
+                    current = parent;
+                  }
+                  
+                  // Follow the same path in the new DOM
+                  let result: Node = root;
+                  for (const index of path) {
+                    const nextNode = result.childNodes[index];
+                    if (nextNode) {
+                      result = nextNode;
+                    } else {
+                      break;
+                    }
+                  }
+                  return result;
                 };
 
+                if (!editorRef.current) return;
                 const newStartNode = findEquivalentNode(savedSelection.startContainer, editorRef.current);
                 const newEndNode = findEquivalentNode(savedSelection.endContainer, editorRef.current);
 
-                // Set the range
-                newRange.setStart(newStartNode, Math.min(savedSelection.startOffset, newStartNode.textContent?.length || 0));
-                newRange.setEnd(newEndNode, Math.min(savedSelection.endOffset, newEndNode.textContent?.length || 0));
+                // Set the range with proper type checking
+                if (newStartNode && newEndNode) {
+                  const startOffset = Math.min(savedSelection.startOffset, newStartNode.textContent?.length || 0);
+                  const endOffset = Math.min(savedSelection.endOffset, newEndNode.textContent?.length || 0);
+                  newRange.setStart(newStartNode, startOffset);
+                  newRange.setEnd(newEndNode, endOffset);
 
-                selection?.removeAllRanges();
-                selection?.addRange(newRange);
+                  selection?.removeAllRanges();
+                  selection?.addRange(newRange);
+                }
               } catch (error) {
                 console.debug('Failed to restore selection:', error);
               }
