@@ -49,6 +49,7 @@ export const NoteEditor = () => {
   const [isNoteSaved, setIsNoteSaved] = useState(false);
   const [existingNote, setExistingNote] = useState<SavedNote | null>(null);
   const [error, setError] = useState("");
+  const [pendingContent, setPendingContent] = useState<string | null>(null);
   const [savePrompt, setSavePrompt] = useState<SavePromptState>({
     isOpen: false,
     title: "",
@@ -56,6 +57,15 @@ export const NoteEditor = () => {
     showPassword: false,
     error: "",
   });
+
+  // Handle setting content in editor after mount
+  useEffect(() => {
+    if (pendingContent && editorRef.current) {
+      console.log('Setting pending content in editor:', pendingContent);
+      editorRef.current.innerHTML = pendingContent;
+      setPendingContent(null);
+    }
+  }, [pendingContent]);
 
   useEffect(() => {
     if (!id) {
@@ -78,17 +88,8 @@ export const NoteEditor = () => {
 
         setNote(loadedNote);
         setContent(loadedNote.content);
+        setPendingContent(loadedNote.content);
         
-        // Ensure the editor ref is available
-        if (!editorRef.current) {
-          console.error('Editor ref is not available');
-          return;
-        }
-
-        // Set the content in the editor
-        editorRef.current.innerHTML = loadedNote.content;
-        console.log('Content set in editor:', loadedNote.content);
-
         // Update UI state
         setShareUrl(window.location.href);
         setLastSaved(new Date(loadedNote.updatedAt));
