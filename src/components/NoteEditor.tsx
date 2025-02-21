@@ -122,11 +122,12 @@ export const NoteEditor = () => {
 
   useEffect(() => {
     loadNote();
-    socketService.joinNote(id);
-
-    return () => {
-      socketService.leaveNote(id);
-    };
+    if (id) {
+      socketService.joinNote(id);
+      return () => {
+        socketService.leaveNote(id);
+      };
+    }
   }, [id, navigate, loadNote]);
 
   useEffect(() => {
