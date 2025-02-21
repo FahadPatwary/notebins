@@ -205,6 +205,8 @@ export const NoteEditor = () => {
           selection.removeAllRanges();
           selection.addRange(newRange);
         }
+      } else {
+        console.log("This problem");
       }
     };
 
