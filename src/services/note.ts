@@ -1,5 +1,15 @@
 import { Note } from "../types";
 
+interface SavedNote {
+  _id: string;
+  title: string;
+  content: string;
+  noteId: string;
+  url: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
 const handleResponse = async (response: Response) => {
@@ -85,6 +95,82 @@ export const noteService = {
         throw new Error(`Failed to update note: ${error.message}`);
       }
       throw new Error("Failed to update note. Please try again.");
+    }
+  },
+
+  async saveNoteToLibrary(
+    title: string,
+    noteId: string,
+    content: string
+  ): Promise<void> {
+    try {
+      const response = await fetch(`${API_URL}/api/saved-notes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        mode: "cors",
+        credentials: "include",
+        body: JSON.stringify({
+          title,
+          noteId,
+          content,
+          url: window.location.href,
+        }),
+      });
+
+      await handleResponse(response);
+    } catch (error) {
+      console.error("Failed to save note to library:", error);
+      if (error instanceof Error) {
+        throw new Error(`Failed to save note to library: ${error.message}`);
+      }
+      throw new Error("Failed to save note to library. Please try again.");
+    }
+  },
+
+  async getSavedNotes(): Promise<SavedNote[]> {
+    try {
+      const response = await fetch(`${API_URL}/api/saved-notes`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+        mode: "cors",
+        credentials: "include",
+      });
+
+      return handleResponse(response);
+    } catch (error) {
+      console.error("Failed to get saved notes:", error);
+      if (error instanceof Error) {
+        throw new Error(`Failed to get saved notes: ${error.message}`);
+      }
+      throw new Error("Failed to get saved notes. Please try again.");
+    }
+  },
+
+  async deleteSavedNote(id: string): Promise<void> {
+    try {
+      const response = await fetch(`${API_URL}/api/saved-notes/${id}`, {
+        method: "DELETE",
+        headers: {
+          Accept: "application/json",
+        },
+        mode: "cors",
+        credentials: "include",
+      });
+
+      if (response.status !== 204) {
+        await handleResponse(response);
+      }
+    } catch (error) {
+      console.error("Failed to delete saved note:", error);
+      if (error instanceof Error) {
+        throw new Error(`Failed to delete saved note: ${error.message}`);
+      }
+      throw new Error("Failed to delete saved note. Please try again.");
     }
   },
 };

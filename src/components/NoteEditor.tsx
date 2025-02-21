@@ -10,6 +10,8 @@ export const NoteEditor = () => {
   const [note, setNote] = useState<Note | null>(null);
   const [content, setContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [showCopied, setShowCopied] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
@@ -155,6 +157,25 @@ export const NoteEditor = () => {
     handleContentChange();
   };
 
+  const handleSaveToLibrary = async () => {
+    if (!note || !id) return;
+
+    const title = prompt("Enter a title for this note:", "Untitled Note");
+    if (!title) return;
+
+    try {
+      setIsSavingToLibrary(true);
+      await noteService.saveNoteToLibrary(title, id, content);
+      setShowSaveSuccess(true);
+      setTimeout(() => setShowSaveSuccess(false), 2000);
+    } catch (error) {
+      console.error("Error saving to library:", error);
+      alert("Failed to save note to library. Please try again.");
+    } finally {
+      setIsSavingToLibrary(false);
+    }
+  };
+
   if (!note && id) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
@@ -170,11 +191,7 @@ export const NoteEditor = () => {
         <div className="w-full px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-4">
-              <img
-                src="/favicon.svg"
-                alt="NoteBins Logo"
-                className="w-8 h-8"
-              />
+              <img src="/favicon.svg" alt="NoteBins Logo" className="w-8 h-8" />
               <a
                 href="/"
                 className="text-xl font-semibold text-gray-900 hover:text-gray-700 transition-colors"
@@ -191,6 +208,70 @@ export const NoteEditor = () => {
               </span>
             </div>
             <div className="flex items-center space-x-4">
+              <button
+                onClick={handleSaveToLibrary}
+                disabled={isSavingToLibrary}
+                className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:opacity-50"
+              >
+                {isSavingToLibrary ? (
+                  <span className="flex items-center">
+                    <svg
+                      className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-700"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
+                    </svg>
+                    Saving...
+                  </span>
+                ) : showSaveSuccess ? (
+                  <span className="flex items-center">
+                    <svg
+                      className="w-4 h-4 mr-2 text-green-500"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 13l4 4L19 7"
+                      />
+                    </svg>
+                    Saved!
+                  </span>
+                ) : (
+                  <span className="flex items-center">
+                    <svg
+                      className="w-4 h-4 mr-2"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+                      />
+                    </svg>
+                    Save to Library
+                  </span>
+                )}
+              </button>
               {shareUrl && (
                 <button
                   onClick={copyShareUrl}
