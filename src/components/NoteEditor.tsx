@@ -71,7 +71,8 @@ export const NoteEditor = () => {
           setContent(loadedNote.content);
           if (editorRef.current) {
             editorRef.current.innerHTML = loadedNote.content;
-          }else{
+            console.log(loadedNote.content);
+          } else {
             console.log("editorRef.current is null - Fahad");
           }
           setShareUrl(window.location.href);
@@ -793,8 +794,8 @@ export const NoteEditor = () => {
               className="p-2 border rounded text-sm"
               title="Font Size"
             >
+              <option value="2">Small</option>
               <option value="3">Normal</option>
-              <option value="1">Small</option>
               <option value="5">Large</option>
               <option value="7">Huge</option>
             </select>
