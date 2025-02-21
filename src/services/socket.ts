@@ -3,8 +3,11 @@ import { io } from "socket.io-client";
 import { NoteUpdate } from "../types";
 
 const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:10000";
-const RECONNECTION_ATTEMPTS = 10;
+const RECONNECTION_ATTEMPTS = 5;
+const RECONNECTION_DELAY = 1000;
+const MAX_RECONNECTION_DELAY = 5000;
 const DEBOUNCE_TIME = 300; // 300ms debounce for updates
+const CONNECTION_TIMEOUT = 10000; // 10s connection timeout
 
 class SocketService {
   private socket: Socket;
@@ -16,16 +19,24 @@ class SocketService {
 
   private constructor() {
     this.socket = io(SOCKET_URL, {
-      transports: ["websocket", "polling"],
-      reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
+      transports: ["websocket"],
+      reconnectionDelay: RECONNECTION_DELAY,
+      reconnectionDelayMax: MAX_RECONNECTION_DELAY,
       reconnectionAttempts: RECONNECTION_ATTEMPTS,
       withCredentials: true,
       forceNew: true,
-      timeout: 10000,
+      timeout: CONNECTION_TIMEOUT,
+      autoConnect: false, // We'll handle connection manually
     });
 
+    this.connect();
     this.setupSocketListeners();
+  }
+
+  private connect() {
+    if (!this.socket.connected && !this.isReconnecting) {
+      this.socket.connect();
+    }
   }
 
   private setupSocketListeners() {
@@ -33,6 +44,12 @@ class SocketService {
       console.log("Connected to socket server");
       this.isReconnecting = false;
       this.reconnectionAttempts = 0;
+
+      // Clear any existing reconnection timers
+      if (this.reconnectionTimer) {
+        clearTimeout(this.reconnectionTimer);
+        this.reconnectionTimer = null;
+      }
 
       // Resend pending update if any
       if (this.pendingUpdate) {
@@ -64,20 +81,37 @@ class SocketService {
     });
   }
 
-  private handleReconnection() {
-    if (
-      !this.isReconnecting &&
-      this.reconnectionAttempts < RECONNECTION_ATTEMPTS
-    ) {
-      this.isReconnecting = true;
-      this.reconnectionAttempts++;
+  private reconnectionTimer: NodeJS.Timeout | null = null;
 
-      setTimeout(() => {
-        console.log(
-          `Attempting to reconnect... (${this.reconnectionAttempts}/${RECONNECTION_ATTEMPTS})`
-        );
-        this.socket.connect();
-      }, Math.min(1000 * this.reconnectionAttempts, 5000));
+  private handleReconnection() {
+    if (this.isReconnecting) return;
+
+    this.isReconnecting = true;
+    this.reconnectionAttempts++;
+
+    if (this.reconnectionAttempts <= RECONNECTION_ATTEMPTS) {
+      const delay = Math.min(
+        RECONNECTION_DELAY * Math.pow(2, this.reconnectionAttempts - 1),
+        MAX_RECONNECTION_DELAY
+      );
+
+      console.log(
+        `Attempting to reconnect... Attempt ${this.reconnectionAttempts}/${RECONNECTION_ATTEMPTS} (delay: ${delay}ms)`
+      );
+
+      // Clear any existing timer
+      if (this.reconnectionTimer) {
+        clearTimeout(this.reconnectionTimer);
+      }
+
+      // Set up new reconnection attempt
+      this.reconnectionTimer = setTimeout(() => {
+        this.connect();
+      }, delay);
+    } else {
+      console.error("Max reconnection attempts reached");
+      // Emit event for UI to handle
+      this.socket.emit("maxReconnectAttempts");
     }
   }
 

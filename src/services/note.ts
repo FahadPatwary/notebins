@@ -24,6 +24,11 @@ interface SaveNoteParams {
 
 const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://notebinsbackend.onrender.com" : "http://localhost:10000");
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000;
+
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
     try {
@@ -31,17 +36,49 @@ const handleResponse = async (response: Response) => {
       throw new Error(
         errorData.message || `HTTP error! status: ${response.status}`
       );
-    } catch {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    } catch (error) {
+      if (response.status >= 500) {
+        throw new Error(`Server error! status: ${response.status}. Please try again later.`);
+      } else if (response.status === 429) {
+        throw new Error('Too many requests. Please wait a moment and try again.');
+      } else if (response.status === 401) {
+        throw new Error('Authentication required. Please log in again.');
+      } else {
+        throw new Error(`Request failed! status: ${response.status}`);
+      }
     }
   }
   return response.json();
 };
 
+const fetchWithRetry = async (url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> => {
+  try {
+    const response = await fetch(url, options);
+    
+    // Don't retry for these status codes
+    if (response.status === 401 || response.status === 403 || response.status === 404) {
+      return response;
+    }
+    
+    if (!response.ok && retries > 0) {
+      await wait(RETRY_DELAY * (MAX_RETRIES - retries + 1));
+      return fetchWithRetry(url, options, retries - 1);
+    }
+    
+    return response;
+  } catch (error) {
+    if (retries > 0) {
+      await wait(RETRY_DELAY * (MAX_RETRIES - retries + 1));
+      return fetchWithRetry(url, options, retries - 1);
+    }
+    throw error;
+  }
+};
+
 export const noteService = {
   async createNote(content: string): Promise<Note> {
     try {
-      const response = await fetch(`${API_URL}/api/notes`, {
+      const response = await fetchWithRetry(`${API_URL}/api/notes`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -66,7 +103,7 @@ export const noteService = {
     try {
       console.log('Fetching note from API:', id);
       
-      const response = await fetch(`${API_URL}/api/notes/${id}`, {
+      const response = await fetchWithRetry(`${API_URL}/api/notes/${id}`, {
         method: "GET",
         headers: {
           Accept: "application/json",
@@ -117,7 +154,7 @@ export const noteService = {
 
   async updateNote(id: string, content: string): Promise<void> {
     try {
-      const response = await fetch(`${API_URL}/api/notes/${id}`, {
+      const response = await fetchWithRetry(`${API_URL}/api/notes/${id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -140,7 +177,7 @@ export const noteService = {
 
   async checkExistingNote(noteId: string): Promise<SavedNote | null> {
     try {
-      const response = await fetch(
+      const response = await fetchWithRetry(
         `${API_URL}/api/saved-notes/check/${noteId}`,
         {
           method: "GET",
@@ -179,7 +216,7 @@ export const noteService = {
       const url = window.location.href;
       const paramsWithUrl = { ...params, url };
 
-      const response = await fetch(`${API_URL}/api/saved-notes`, {
+      const response = await fetchWithRetry(`${API_URL}/api/saved-notes`, {
         method: "POST",
         headers,
         mode: "cors",
@@ -201,7 +238,7 @@ export const noteService = {
 
   async getSavedNotes(): Promise<SavedNote[]> {
     try {
-      const response = await fetch(`${API_URL}/api/saved-notes`, {
+      const response = await fetchWithRetry(`${API_URL}/api/saved-notes`, {
         method: "GET",
         headers: {
           Accept: "application/json",
@@ -230,7 +267,7 @@ export const noteService = {
         headers["X-Note-Password"] = password;
       }
 
-      const response = await fetch(`${API_URL}/api/saved-notes/${id}`, {
+      const response = await fetchWithRetry(`${API_URL}/api/saved-notes/${id}`, {
         method: "DELETE",
         headers,
         mode: "cors",
