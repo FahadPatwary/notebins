@@ -177,11 +177,13 @@ export const NoteEditor = () => {
         !isLocalUpdate.current &&
         editorRef.current
       ) {
+        // Save the current selection range
         const selection = window.getSelection();
         const range = selection?.getRangeAt(0);
         const startOffset = range?.startOffset;
         const endOffset = range?.endOffset;
 
+        // Update the content in the editor
         editorRef.current.innerHTML = update.content;
         setContent(update.content);
         setLastSaved(new Date());
@@ -191,31 +193,38 @@ export const NoteEditor = () => {
           selection &&
           range &&
           startOffset !== undefined &&
-          endOffset !== undefined
+          endOffset !== undefined &&
+          editorRef.current
         ) {
           const newRange = document.createRange();
-          newRange.setStart(
-            editorRef.current,
-            Math.min(startOffset, editorRef.current.childNodes.length)
-          );
-          newRange.setEnd(
-            editorRef.current,
-            Math.min(endOffset, editorRef.current.childNodes.length)
-          );
+          const editor = editorRef.current;
+
+          // Find the closest node in the updated content to set the range
+          const targetNode =
+            editor.childNodes[
+              Math.min(startOffset, editor.childNodes.length - 1)
+            ];
+          const targetEndNode =
+            editor.childNodes[
+              Math.min(endOffset, editor.childNodes.length - 1)
+            ];
+
+          newRange.setStart(targetNode, 0); // Start from the node at the calculated offset
+          newRange.setEnd(targetEndNode, 0); // End at the node at the calculated offset
           selection.removeAllRanges();
           selection.addRange(newRange);
         }
-      } else {
-        console.log("This problem");
       }
     };
 
+    // Listen to updates
     socketService.onNoteUpdate(handleNoteUpdate);
+
+    // Cleanup the event listener
     return () => {
       socketService.offNoteUpdate(handleNoteUpdate);
     };
   }, [id, content]);
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
