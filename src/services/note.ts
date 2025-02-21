@@ -64,20 +64,35 @@ export const noteService = {
 
   async getNote(id: string): Promise<Note | null> {
     try {
+      console.log('Fetching note from API:', id);
+      console.log('Using API URL:', API_URL);
+
       const response = await fetch(`${API_URL}/api/notes/${id}`, {
         method: "GET",
         headers: {
           Accept: "application/json",
+          'Content-Type': 'application/json',
         },
         mode: "cors",
         credentials: "include",
       });
 
+      console.log('API Response status:', response.status);
+
       if (response.status === 404) {
+        console.log('Note not found');
         return null;
       }
 
-      return handleResponse(response);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API error response:', errorText);
+        throw new Error(`API error: ${response.status} - ${errorText}`);
+      }
+
+      const data = await handleResponse(response);
+      console.log('API Response data:', data);
+      return data;
     } catch (error) {
       console.error("Failed to get note:", error);
       if (error instanceof Error) {

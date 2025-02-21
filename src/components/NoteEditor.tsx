@@ -65,40 +65,56 @@ export const NoteEditor = () => {
 
     const loadNote = async () => {
       try {
+        console.log('Loading note with ID:', id);
         const loadedNote = await noteService.getNote(id);
-        if (loadedNote) {
-          setNote(loadedNote);
-          setContent(loadedNote.content);
-          if (editorRef.current) {
-            editorRef.current.innerHTML = loadedNote.content;
-            console.log(loadedNote.content);
-          } else {
-            console.log("editorRef.current is null - Fahad");
-          }
-          setShareUrl(window.location.href);
-          setLastSaved(new Date(loadedNote.updatedAt));
+        console.log('Loaded note:', loadedNote);
 
-          // Check if note already exists in library
+        if (!loadedNote) {
+          console.error('Note not found');
+          toast.error('Note not found or could not be loaded');
+          return;
+        }
+
+        setNote(loadedNote);
+        setContent(loadedNote.content);
+        
+        // Ensure the editor ref is available
+        if (!editorRef.current) {
+          console.error('Editor ref is not available');
+          return;
+        }
+
+        // Set the content in the editor
+        editorRef.current.innerHTML = loadedNote.content;
+        console.log('Content set in editor:', loadedNote.content);
+
+        // Update UI state
+        setShareUrl(window.location.href);
+        setLastSaved(new Date(loadedNote.updatedAt));
+        setError('');
+
+        // Check if note exists in library
+        try {
           const existingNote = await noteService.checkExistingNote(id);
           if (existingNote) {
-            console.log("Found existing note:", existingNote.title);
+            console.log('Found existing note:', existingNote);
             setExistingNote(existingNote);
             setIsNoteSaved(true);
-
-            // Show toast notification for existing note
             toast(
-              "This note is already saved. Changes will update the existing note.",
+              'This note is already saved. Changes will update the existing note.',
               {
-                icon: "ℹ️",
-                position: "bottom-right",
+                icon: 'ℹ️',
+                position: 'bottom-right',
                 duration: 4000,
               }
             );
           } else {
-            // Reset state for new notes
             setExistingNote(null);
             setIsNoteSaved(false);
           }
+        } catch (error) {
+          console.error('Error checking existing note:', error);
+          // Don't throw here, as the main note content is already loaded
         } else {
           navigate("/");
         }
