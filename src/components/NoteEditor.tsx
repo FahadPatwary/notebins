@@ -27,6 +27,8 @@ interface SavePromptState {
 export const NoteEditor = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  // Initialize all state with useMemo to prevent unnecessary re-renders
+  const [isLoading, setIsLoading] = useState(true);
   const [note, setNote] = useState<Note | null>(null);
   const [content, setContent] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -35,20 +37,46 @@ export const NoteEditor = () => {
   const [shareUrl, setShareUrl] = useState("");
   const [showCopied, setShowCopied] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
-  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isLocalUpdate = useRef(false);
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
-  const [formatState, setFormatState] = useState<FormatState>({
+  const [isNoteSaved, setIsNoteSaved] = useState(false);
+  const [existingNote, setExistingNote] = useState<SavedNote | null>(null);
+  const [error, setError] = useState("");
+
+  // Memoize refs to prevent unnecessary re-renders
+  const refs = useMemo(
+    () => ({
+      editorRef: useRef<HTMLDivElement>(null),
+      updateTimeoutRef: useRef<NodeJS.Timeout | null>(null),
+      isLocalUpdate: useRef(false),
+    }),
+    []
+  );
+
+  // Memoize format state to prevent unnecessary re-renders
+  const [formatState, setFormatState] = useState<FormatState>(() => ({
     bold: false,
     italic: false,
     underline: false,
     fontSize: "3",
     alignment: "left",
-  });
-  const [isNoteSaved, setIsNoteSaved] = useState(false);
-  const [existingNote, setExistingNote] = useState<SavedNote | null>(null);
-  const [error, setError] = useState("");
+  }));
+
+  // Memoize editor state to prevent unnecessary re-renders
+  const editorState = useMemo(
+    () => ({
+      note,
+      content,
+      shareUrl,
+      lastSaved,
+      error,
+      existingNote,
+      isNoteSaved,
+      isSaving,
+      isLoading,
+      timeRemaining,
+    }),
+    [note, content, shareUrl, lastSaved, error, existingNote, isNoteSaved, isSaving, isLoading, timeRemaining]
+  );
   const [pendingContent, setPendingContent] = useState<string | null>(null);
   const [savePrompt, setSavePrompt] = useState<SavePromptState>({
     isOpen: false,
@@ -60,7 +88,7 @@ export const NoteEditor = () => {
 
   // Handle setting content in editor after mount
   useEffect(() => {
-    if (pendingContent && editorRef.current) {
+    if (pendingContent && refs.editorRef.current) {
       console.log("Setting pending content in editor");
       
       // Save current selection
@@ -68,10 +96,10 @@ export const NoteEditor = () => {
       const savedRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
       
       // Update content
-      editorRef.current.innerHTML = pendingContent;
+      refs.editorRef.current.innerHTML = pendingContent;
       
       // Restore selection if it was inside the editor
-      if (savedRange && editorRef.current.contains(savedRange.commonAncestorContainer)) {
+      if (savedRange && refs.editorRef.current.contains(savedRange.commonAncestorContainer)) {
         try {
           selection?.removeAllRanges();
           selection?.addRange(savedRange);
@@ -82,7 +110,7 @@ export const NoteEditor = () => {
       
       setPendingContent(null);
     }
-  }, [pendingContent]);
+  }, [pendingContent, refs]);
 
   const loadNote = useCallback(async () => {
     if (!id) {
@@ -90,9 +118,13 @@ export const NoteEditor = () => {
       return;
     }
 
+    setIsLoading(true);
     try {
-      console.log("Loading note with ID:", id);
-      const loadedNote = await noteService.getNote(id);
+      // Load note and check existence in parallel
+      const [loadedNote, existingNoteCheck] = await Promise.all([
+        noteService.getNote(id),
+        noteService.checkExistingNote(id).catch(() => null)
+      ]);
 
       // Handle note not found or invalid note data
       if (!loadedNote) {
@@ -101,39 +133,43 @@ export const NoteEditor = () => {
         return;
       }
 
-      // Set note content and update UI
-      setNote(loadedNote);
-      setContent(loadedNote.content);
-      setPendingContent(loadedNote.content);
-      setShareUrl(window.location.href);
-      setLastSaved(new Date(loadedNote.updatedAt));
-      setError("");
+      // Batch state updates
+      const stateUpdates = {
+        note: loadedNote,
+        content: loadedNote.content,
+        pendingContent: loadedNote.content,
+        shareUrl: window.location.href,
+        lastSaved: new Date(loadedNote.updatedAt),
+        error: "",
+        existingNote: existingNoteCheck,
+        isNoteSaved: !!existingNoteCheck,
+      };
 
-      // Check if note exists in library
-      try {
-        const existingNote = await noteService.checkExistingNote(id);
-        if (existingNote) {
-          setExistingNote(existingNote);
-          setIsNoteSaved(true);
-          toast(
-            "This note is already saved. Changes will update the existing note.",
-            {
-              icon: "ℹ️",
-              position: "bottom-right",
-              duration: 4000,
-            }
-          );
-        } else {
-          setExistingNote(null);
-          setIsNoteSaved(false);
-        }
-      } catch (error) {
-        console.error("Error checking existing note:", error);
-        // Don't throw here, as the main note content is already loaded
+      // Apply all state updates at once
+      setNote(stateUpdates.note);
+      setContent(stateUpdates.content);
+      setPendingContent(stateUpdates.pendingContent);
+      setShareUrl(stateUpdates.shareUrl);
+      setLastSaved(stateUpdates.lastSaved);
+      setError(stateUpdates.error);
+      setExistingNote(stateUpdates.existingNote);
+      setIsNoteSaved(stateUpdates.isNoteSaved);
+
+      if (existingNoteCheck) {
+        toast(
+          "This note is already saved. Changes will update the existing note.",
+          {
+            icon: "ℹ️",
+            position: "bottom-right",
+            duration: 4000,
+          }
+        );
       }
     } catch (error: any) {
       console.error("Error loading note:", error);
       toast.error(error.message || "Error loading note. Please try again.");
+    } finally {
+      setIsLoading(false);
     }
   }, [id, navigate, setNote, setContent, setPendingContent, setShareUrl, setLastSaved, setError, setExistingNote, setIsNoteSaved]);
 
@@ -168,52 +204,48 @@ export const NoteEditor = () => {
     }
   }, [note?.createdAt]);
 
-  const handleContentChange = useCallback(() => {
-    if (!editorRef.current || !id) return;
+  const handleContentChange = useCallback(
+    debounce(() => {
+      if (!refs.editorRef.current || !id || refs.isLocalUpdate.current) return;
 
-    const newContent = editorRef.current.innerHTML;
-    if (newContent === content) return;
+      const newContent = refs.editorRef.current.innerHTML;
+      if (newContent === content) return;
 
-    // Prevent rapid-fire updates
-    if (isLocalUpdate.current) return;
+      refs.isLocalUpdate.current = true;
+      setContent(newContent);
 
-    isLocalUpdate.current = true;
-    setContent(newContent);
+      // Use a single async function for better error handling
+      const updateContent = async () => {
+        try {
+          setIsSaving(true);
 
-    // Clear existing timeout
-    if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current);
-    }
+          // Batch updates to reduce re-renders
+          await Promise.all([
+            noteService.updateNote(id, newContent),
+            // Wrap socket update in Promise to handle both together
+            new Promise<void>((resolve) => {
+              socketService.updateNote({ noteId: id, content: newContent });
+              resolve();
+            })
+          ]);
 
-    // Debounce the update
-    updateTimeoutRef.current = setTimeout(async () => {
-      try {
-        setIsSaving(true);
-        
-        // Update local state first
-        setContent(newContent);
-        
-        // Then update server and notify collaborators
-        await Promise.all([
-          noteService.updateNote(id, newContent),
-          new Promise<void>((resolve) => {
-            socketService.updateNote({
-              noteId: id,
-              content: newContent,
-            });
-            resolve();
-          })
-        ]);
+          setLastSaved(new Date());
+        } catch (error) {
+          console.error("Error saving note:", error);
+          toast.error("Failed to save changes. Please try again.");
+          // Revert content on error
+          setContent(content);
+        } finally {
+          setIsSaving(false);
+          refs.isLocalUpdate.current = false;
+        }
+      };
 
-        setLastSaved(new Date());
-      } catch (error) {
-        console.error("Error saving note:", error);
-        toast.error("Failed to save changes. Please try again.");
-      } finally {
-        setIsSaving(false);
-        isLocalUpdate.current = false;
-      }
-    }, 300);
+      // Execute update
+      updateContent();
+    }, 100), // Reduced debounce time for better responsiveness
+    [id, content, refs]
+  );
   }, [id, content]);
 
   useEffect(() => {
@@ -727,10 +759,13 @@ export const NoteEditor = () => {
     </div>
   );
 
-  if (!note && id) {
+  if (isLoading || (!note && id)) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="animate-pulse text-gray-500">Loading...</div>
+        <div className="flex flex-col items-center space-y-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+          <div className="text-gray-600 font-medium">Loading your note...</div>
+        </div>
       </div>
     );
   }
