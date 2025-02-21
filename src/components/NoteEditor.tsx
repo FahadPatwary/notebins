@@ -123,9 +123,9 @@ export const NoteEditor = () => {
   useEffect(() => {
     loadNote();
     if (id) {
-      socketService.joinNote(id);
+      socketService.joinNote(id!);
       return () => {
-        socketService.leaveNote(id);
+        socketService.leaveNote(id!);
       };
     }
   }, [id, navigate, loadNote]);
