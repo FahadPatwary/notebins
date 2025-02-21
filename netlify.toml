@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"   # Command to build your React app
+  publish = "build"           # Folder where the build files will be placed
+
+[[redirects]]
+  from = "/*"                 # Redirect all paths
+  to = "/index.html"          # Serve index.html for all paths
+  status = 200                # Status code for rewrite (200 OK)
+  force = true                # Force the rewrite rule
+
+[build.environment]
+  NODE_ENV = "production"     # Set environment to production for optimized build
