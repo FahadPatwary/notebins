@@ -505,8 +505,8 @@ export const SavedNotes = () => {
                     <div className="text-gray-600 text-base mb-4 line-clamp-3 break-words leading-relaxed">
                       {formatContent(note.content)}
                     </div>
-                    <a
-                      href={note.url}
+                    <button
+                      onClick={() => navigate(`/${note.noteId}`)}
                       className="inline-flex items-center text-blue-600 hover:text-blue-800 text-base font-medium transition-colors group"
                     >
                       Open Note
@@ -523,7 +523,7 @@ export const SavedNotes = () => {
                           d="M9 5l7 7-7 7"
                         />
                       </svg>
-                    </a>
+                    </button>
                   </div>
                 </div>
               ))}

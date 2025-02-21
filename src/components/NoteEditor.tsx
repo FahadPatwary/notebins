@@ -725,6 +725,8 @@ export const NoteEditor = () => {
                 </button>
               )}
             </div>
+            
+
           </div>
         </div>
       </header>
