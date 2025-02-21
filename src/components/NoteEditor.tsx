@@ -62,8 +62,13 @@ export const NoteEditor = () => {
 
   // Handle setting content in editor after mount
   useEffect(() => {
+    let timeoutId: NodeJS.Timeout;
+
     if (pendingContent && editorRef.current) {
-      console.log("Setting pending content in editor");
+      console.log("Setting pending content in editor:", {
+        contentLength: pendingContent.length,
+        editorExists: !!editorRef.current
+      });
 
       // Save current selection
       const selection = window.getSelection();
@@ -71,8 +76,17 @@ export const NoteEditor = () => {
         ? selection.getRangeAt(0).cloneRange()
         : null;
 
-      // Update content
-      editorRef.current.innerHTML = pendingContent;
+      // Update content with a slight delay to ensure DOM is ready
+      timeoutId = setTimeout(() => {
+        try {
+          if (editorRef.current) {
+            editorRef.current.innerHTML = pendingContent;
+            console.log("Content set successfully");
+          }
+        } catch (error) {
+          console.error("Error setting editor content:", error);
+        }
+      }, 50);
 
       // Restore selection if it was inside the editor
       if (
@@ -101,13 +115,27 @@ export const NoteEditor = () => {
     try {
       console.log("Loading note with ID:", id);
       const loadedNote = await noteService.getNote(id);
+      console.log("Note loaded:", loadedNote);
 
       // Handle note not found or invalid note data
       if (!loadedNote) {
-        toast.error("Note not found");
+        console.error("Note not found or invalid");
+        toast.error("Note not found or invalid");
         navigate("/");
         return;
       }
+
+      // Validate content
+      if (!loadedNote.content) {
+        console.error("Note content is empty");
+        toast.error("Note content is empty");
+        return;
+      }
+
+      console.log("Setting note content:", {
+        contentLength: loadedNote.content.length,
+        hasContent: !!loadedNote.content
+      });
 
       // Set note content and update UI
       setNote(loadedNote);
@@ -116,6 +144,9 @@ export const NoteEditor = () => {
       setShareUrl(window.location.href);
       setLastSaved(new Date(loadedNote.updatedAt));
       setError("");
+
+      // Verify content was set
+      console.log("Content state updated");
 
       // Check if note exists in library
       try {
@@ -170,7 +201,36 @@ export const NoteEditor = () => {
         socketService.leaveNote(id!);
       };
     }
-  }, [id, navigate, loadNote]);
+  }, [id, loadNote]);
+
+  // Handle cleanup and initialization
+  useEffect(() => {
+    let mounted = true;
+
+    const initializeNote = async () => {
+      if (!mounted) return;
+      await loadNote();
+      
+      if (mounted && id) {
+        socketService.joinNote(id);
+      }
+    };
+
+    initializeNote();
+
+    return () => {
+      mounted = false;
+      if (id) {
+        socketService.leaveNote(id);
+      }
+      // Clear any pending content
+      setPendingContent(null);
+      // Clear editor content
+      if (editorRef.current) {
+        editorRef.current.innerHTML = '';
+      }
+    };
+  }, [id, loadNote]);
 
   useEffect(() => {
     if (note?.createdAt) {

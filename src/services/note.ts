@@ -31,24 +31,42 @@ const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
+    let errorMessage = `Request failed! status: ${response.status}`;
+    
     try {
-      const errorData = await response.json();
-      throw new Error(
-        errorData.message || `HTTP error! status: ${response.status}`
-      );
-    } catch (error) {
-      if (response.status >= 500) {
-        throw new Error(`Server error! status: ${response.status}. Please try again later.`);
-      } else if (response.status === 429) {
-        throw new Error('Too many requests. Please wait a moment and try again.');
-      } else if (response.status === 401) {
-        throw new Error('Authentication required. Please log in again.');
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        const errorData = await response.json();
+        errorMessage = errorData.message || errorMessage;
       } else {
-        throw new Error(`Request failed! status: ${response.status}`);
+        const textError = await response.text();
+        if (textError) {
+          errorMessage = textError;
+        }
       }
+    } catch (error) {
+      console.error('Error parsing error response:', error);
+    }
+
+    if (response.status >= 500) {
+      throw new Error(`Server error! status: ${response.status}. Please try again in a few minutes.`);
+    } else if (response.status === 429) {
+      throw new Error('Too many requests. Please wait a moment and try again.');
+    } else if (response.status === 401) {
+      throw new Error('Authentication required. Please log in again.');
+    } else if (response.status === 413) {
+      throw new Error('Content too large. Please reduce the size and try again.');
+    } else {
+      throw new Error(errorMessage);
     }
   }
-  return response.json();
+
+  try {
+    return await response.json();
+  } catch (error) {
+    console.error('Error parsing response:', error);
+    throw new Error('Invalid response from server. Please try again.');
+  }
 };
 
 const fetchWithRetry = async (url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> => {
@@ -77,7 +95,17 @@ const fetchWithRetry = async (url: string, options: RequestInit, retries = MAX_R
 
 export const noteService = {
   async createNote(content: string): Promise<Note> {
+    if (!content || content.trim().length === 0) {
+      throw new Error('Note content cannot be empty');
+    }
+
     try {
+      // Validate content size (rough estimate)
+      const contentSize = new Blob([content]).size;
+      if (contentSize > 5 * 1024 * 1024) { // 5MB limit
+        throw new Error('Note content is too large. Maximum size is 5MB.');
+      }
+
       const response = await fetchWithRetry(`${API_URL}/api/notes`, {
         method: "POST",
         headers: {
@@ -86,13 +114,22 @@ export const noteService = {
         },
         mode: "cors",
         credentials: "include",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ 
+          content,
+          timestamp: new Date().toISOString() // Add timestamp for debugging
+        }),
       });
 
       return handleResponse(response);
     } catch (error) {
       console.error("Failed to create note:", error);
       if (error instanceof Error) {
+        // Don't wrap error message if it's already meaningful
+        if (error.message.includes('Note content') || 
+            error.message.includes('Server error') || 
+            error.message.includes('Too many requests')) {
+          throw error;
+        }
         throw new Error(`Failed to create note: ${error.message}`);
       }
       throw new Error("Failed to create note. Please try again.");
@@ -133,19 +170,33 @@ export const noteService = {
       }
 
       const data = await response.json();
+      console.log('Raw note data received:', data);
       
       // Validate note data
-      if (!data || !data.id || typeof data.content !== 'string') {
-        console.error('Invalid note data:', data);
+      if (!data) {
+        console.error('Note data is null or undefined');
         return null;
       }
 
-      return {
+      if (!data.id) {
+        console.error('Note data missing ID:', data);
+        return null;
+      }
+
+      if (typeof data.content !== 'string') {
+        console.error('Note content is not a string:', typeof data.content);
+        return null;
+      }
+
+      const note = {
         id: data.id,
         content: data.content,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt
+        createdAt: data.createdAt || new Date().toISOString(),
+        updatedAt: data.updatedAt || new Date().toISOString()
       };
+
+      console.log('Processed note data:', note);
+      return note;
     } catch (error) {
       console.error("Failed to get note:", error);
       throw error;
