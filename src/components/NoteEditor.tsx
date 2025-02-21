@@ -61,7 +61,7 @@ export const NoteEditor = () => {
   // Handle setting content in editor after mount
   useEffect(() => {
     if (pendingContent && editorRef.current) {
-      console.log('Setting pending content in editor:', pendingContent);
+      console.log("Setting pending content in editor:", pendingContent);
       editorRef.current.innerHTML = pendingContent;
       setPendingContent(null);
     }
@@ -75,18 +75,18 @@ export const NoteEditor = () => {
 
     const loadNote = async () => {
       if (!id) {
-        navigate('/');
+        navigate("/");
         return;
       }
 
       try {
-        console.log('Loading note with ID:', id);
+        console.log("Loading note with ID:", id);
         const loadedNote = await noteService.getNote(id);
 
         // Handle note not found or invalid note data
         if (!loadedNote) {
-          toast.error('Note not found');
-          navigate('/');
+          toast.error("Note not found");
+          navigate("/");
           return;
         }
 
@@ -96,7 +96,7 @@ export const NoteEditor = () => {
         setPendingContent(loadedNote.content);
         setShareUrl(window.location.href);
         setLastSaved(new Date(loadedNote.updatedAt));
-        setError('');
+        setError("");
 
         // Check if note exists in library
         try {
@@ -105,10 +105,10 @@ export const NoteEditor = () => {
             setExistingNote(existingNote);
             setIsNoteSaved(true);
             toast(
-              'This note is already saved. Changes will update the existing note.',
+              "This note is already saved. Changes will update the existing note.",
               {
-                icon: 'ℹ️',
-                position: 'bottom-right',
+                icon: "ℹ️",
+                position: "bottom-right",
                 duration: 4000,
               }
             );
@@ -117,12 +117,12 @@ export const NoteEditor = () => {
             setIsNoteSaved(false);
           }
         } catch (error) {
-          console.error('Error checking existing note:', error);
+          console.error("Error checking existing note:", error);
           // Don't throw here, as the main note content is already loaded
         }
       } catch (error: any) {
-        console.error('Error loading note:', error);
-        toast.error(error.message || 'Error loading note. Please try again.');
+        console.error("Error loading note:", error);
+        toast.error(error.message || "Error loading note. Please try again.");
       }
     };
 
@@ -701,28 +701,51 @@ export const NoteEditor = () => {
             <div className="flex items-center space-x-4">
               {renderSaveButton()}
               {shareUrl && (
-                <button
-                  onClick={copyShareUrl}
-                  className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
-                >
-                  {showCopied ? (
-                    <span className="flex items-center">
-                      <svg
-                        className="w-4 h-4 mr-2 text-green-500"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M5 13l4 4L19 7"
-                        />
-                      </svg>
-                      Copied!
-                    </span>
-                  ) : (
+                <>
+                  <button
+                    onClick={copyShareUrl}
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
+                  >
+                    {showCopied ? (
+                      <span className="flex items-center">
+                        <svg
+                          className="w-4 h-4 mr-2 text-green-500"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                        Copied!
+                      </span>
+                    ) : (
+                      <span className="flex items-center">
+                        <svg
+                          className="w-4 h-4 mr-2"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                          />
+                        </svg>
+                        Share
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => loadNote()}
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
+                  >
                     <span className="flex items-center">
                       <svg
                         className="w-4 h-4 mr-2"
@@ -734,17 +757,15 @@ export const NoteEditor = () => {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                           strokeWidth={2}
-                          d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                         />
                       </svg>
-                      Share
+                      Reload
                     </span>
-                  )}
-                </button>
+                  </button>
+                </>
               )}
             </div>
-            
-if (!loadedNote || !loadedNote.content)
           </div>
         </div>
       </header>
