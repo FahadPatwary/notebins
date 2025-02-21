@@ -1,0 +1,28 @@
+/* Custom background pattern */
+.bg-pattern {
+  background-image: 
+    linear-gradient(to right, rgba(59, 130, 246, 0.15) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(59, 130, 246, 0.15) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.8;
+}
+
+/* Glowing orb effect */
+.glow-orb {
+  background: radial-gradient(circle at center, rgba(59, 130, 246, 0.3), transparent 70%);
+  filter: blur(60px);
+  opacity: 0.8;
+}
+
+/* Mask for pattern fade-out */
+.pattern-mask {
+  mask-image: radial-gradient(circle at center, white 30%, transparent 80%);
+  -webkit-mask-image: radial-gradient(circle at center, white 30%, transparent 80%);
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}

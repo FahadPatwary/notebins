@@ -5,6 +5,7 @@ import type { SavedNote } from "../services/note";
 import { noteService } from "../services/note";
 import { socketService } from "../services/socket";
 import { Note } from "../types";
+import { Loading } from "./Loading";
 
 const EXPIRATION_TIME = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
 
@@ -29,6 +30,7 @@ export const NoteEditor = () => {
   const navigate = useNavigate();
   const [note, setNote] = useState<Note | null>(null);
   const [content, setContent] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingToLibrary, setIsSavingToLibrary] = useState(false);
   const [showSaveSuccess, setShowSaveSuccess] = useState(false);
@@ -62,16 +64,21 @@ export const NoteEditor = () => {
   useEffect(() => {
     if (pendingContent && editorRef.current) {
       console.log("Setting pending content in editor");
-      
+
       // Save current selection
       const selection = window.getSelection();
-      const savedRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
-      
+      const savedRange = selection?.rangeCount
+        ? selection.getRangeAt(0).cloneRange()
+        : null;
+
       // Update content
       editorRef.current.innerHTML = pendingContent;
-      
+
       // Restore selection if it was inside the editor
-      if (savedRange && editorRef.current.contains(savedRange.commonAncestorContainer)) {
+      if (
+        savedRange &&
+        editorRef.current.contains(savedRange.commonAncestorContainer)
+      ) {
         try {
           selection?.removeAllRanges();
           selection?.addRange(savedRange);
@@ -79,7 +86,7 @@ export const NoteEditor = () => {
           console.debug("Could not restore selection:", error);
         }
       }
-      
+
       setPendingContent(null);
     }
   }, [pendingContent]);
@@ -90,6 +97,7 @@ export const NoteEditor = () => {
       return;
     }
 
+    setIsLoading(true);
     try {
       console.log("Loading note with ID:", id);
       const loadedNote = await noteService.getNote(id);
@@ -131,11 +139,28 @@ export const NoteEditor = () => {
         console.error("Error checking existing note:", error);
         // Don't throw here, as the main note content is already loaded
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error loading note:", error);
-      toast.error(error.message || "Error loading note. Please try again.");
+      if (error instanceof Error) {
+        toast.error(error.message || "Error loading note. Please try again.");
+      } else {
+        toast.error("Error loading note. Please try again.");
+      }
+    } finally {
+      setIsLoading(false);
     }
-  }, [id, navigate, setNote, setContent, setPendingContent, setShareUrl, setLastSaved, setError, setExistingNote, setIsNoteSaved]);
+  }, [
+    id,
+    navigate,
+    setNote,
+    setContent,
+    setPendingContent,
+    setShareUrl,
+    setLastSaved,
+    setError,
+    setExistingNote,
+    setIsNoteSaved,
+  ]);
 
   useEffect(() => {
     loadNote();
@@ -189,10 +214,10 @@ export const NoteEditor = () => {
     updateTimeoutRef.current = setTimeout(async () => {
       try {
         setIsSaving(true);
-        
+
         // Update local state first
         setContent(newContent);
-        
+
         // Then update server and notify collaborators
         await Promise.all([
           noteService.updateNote(id, newContent),
@@ -202,7 +227,7 @@ export const NoteEditor = () => {
               content: newContent,
             });
             resolve();
-          })
+          }),
         ]);
 
         setLastSaved(new Date());
@@ -228,15 +253,18 @@ export const NoteEditor = () => {
           // Save the current selection and cursor state
           let savedSelection = null;
           const selection = window.getSelection();
-          
+
           // Only save selection if it's within our editor
-          if (selection?.rangeCount && editorRef.current.contains(selection.anchorNode)) {
+          if (
+            selection?.rangeCount &&
+            editorRef.current.contains(selection.anchorNode)
+          ) {
             savedSelection = {
               range: selection.getRangeAt(0),
               startContainer: selection.anchorNode,
               startOffset: selection.anchorOffset,
               endContainer: selection.focusNode,
-              endOffset: selection.focusOffset
+              endOffset: selection.focusOffset,
             };
           }
 
@@ -250,23 +278,28 @@ export const NoteEditor = () => {
             requestAnimationFrame(() => {
               try {
                 const newRange = document.createRange();
-                
+
                 // Find equivalent positions in the new DOM
-                const findEquivalentNode = (oldNode: Node | null, root: HTMLElement): Node => {
+                const findEquivalentNode = (
+                  oldNode: Node | null,
+                  root: HTMLElement
+                ): Node => {
                   if (!oldNode || !oldNode.parentNode) return root;
-                  
+
                   // Get the path from oldNode to its root
                   const path: number[] = [];
                   let current: Node | null = oldNode;
                   while (current && current.parentNode && current !== root) {
                     const parent: Node = current.parentNode;
-                    const index = Array.from(parent.childNodes).findIndex(node => node === current);
+                    const index = Array.from(parent.childNodes).findIndex(
+                      (node) => node === current
+                    );
                     if (index !== -1) {
                       path.unshift(index);
                     }
                     current = parent;
                   }
-                  
+
                   // Follow the same path in the new DOM
                   let result: Node = root;
                   for (const index of path) {
@@ -281,13 +314,25 @@ export const NoteEditor = () => {
                 };
 
                 if (!editorRef.current) return;
-                const newStartNode = findEquivalentNode(savedSelection.startContainer, editorRef.current);
-                const newEndNode = findEquivalentNode(savedSelection.endContainer, editorRef.current);
+                const newStartNode = findEquivalentNode(
+                  savedSelection.startContainer,
+                  editorRef.current
+                );
+                const newEndNode = findEquivalentNode(
+                  savedSelection.endContainer,
+                  editorRef.current
+                );
 
                 // Set the range with proper type checking
                 if (newStartNode && newEndNode) {
-                  const startOffset = Math.min(savedSelection.startOffset, newStartNode.textContent?.length || 0);
-                  const endOffset = Math.min(savedSelection.endOffset, newEndNode.textContent?.length || 0);
+                  const startOffset = Math.min(
+                    savedSelection.startOffset,
+                    newStartNode.textContent?.length || 0
+                  );
+                  const endOffset = Math.min(
+                    savedSelection.endOffset,
+                    newEndNode.textContent?.length || 0
+                  );
                   newRange.setStart(newStartNode, startOffset);
                   newRange.setEnd(newEndNode, endOffset);
 
@@ -295,12 +340,12 @@ export const NoteEditor = () => {
                   selection?.addRange(newRange);
                 }
               } catch (error) {
-                console.debug('Failed to restore selection:', error);
+                console.debug("Failed to restore selection:", error);
               }
             });
           }
         } catch (error) {
-          console.error('Error handling note update:', error);
+          console.error("Error handling note update:", error);
         }
       }
     };
@@ -727,12 +772,8 @@ export const NoteEditor = () => {
     </div>
   );
 
-  if (!note && id) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="animate-pulse text-gray-500">Loading...</div>
-      </div>
-    );
+  if (isLoading || (!note && id)) {
+    return <Loading />;
   }
 
   return (
@@ -769,6 +810,27 @@ export const NoteEditor = () => {
               {renderSaveButton()}
               {shareUrl && (
                 <>
+                  <button
+                    onClick={() => loadNote()}
+                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
+                  >
+                    <span className="flex items-center">
+                      <svg
+                        className="w-4 h-4 mr-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                      </svg>
+                      Reload
+                    </span>
+                  </button>
                   <button
                     onClick={copyShareUrl}
                     className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
@@ -808,27 +870,6 @@ export const NoteEditor = () => {
                         Share
                       </span>
                     )}
-                  </button>
-                  <button
-                    onClick={() => loadNote()}
-                    className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all"
-                  >
-                    <span className="flex items-center">
-                      <svg
-                        className="w-4 h-4 mr-2"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                        />
-                      </svg>
-                      Reload
-                    </span>
                   </button>
                 </>
               )}

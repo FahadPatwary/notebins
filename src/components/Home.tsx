@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { noteService } from "../services/note";
+import "../styles/background.css";
 
 export const Home = () => {
   const navigate = useNavigate();
@@ -39,13 +40,19 @@ export const Home = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex flex-col items-center justify-center px-4">
-      <div className="w-full max-w-[100vw] space-y-12 text-center px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen relative flex flex-col items-center justify-center px-4 overflow-hidden">
+      {/* Background Pattern */}
+      <div className="absolute inset-0 bg-gradient-to-b from-blue-100 to-white">
+        <div className="absolute inset-0 bg-pattern pattern-mask" />
+      </div>
+      <div className="relative w-full max-w-[100vw] space-y-12 text-center px-4 sm:px-6 lg:px-8 z-10">
+        {/* Glowing Orb Effect */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] glow-orb pointer-events-none" />
         <div className="space-y-6 max-w-3xl mx-auto">
           <img
             src="/favicon.svg"
             alt="NoteBins Logo"
-            className="w-24 h-24 mx-auto"
+            className="w-24 h-24 mx-auto transform transition-transform hover:scale-105 duration-300"
           />
           <h1 className="text-5xl font-light tracking-tight text-gray-900">
             Note<span className="font-semibold">Bins</span>
@@ -60,7 +67,7 @@ export const Home = () => {
             <button
               onClick={handleCreateNote}
               disabled={isCreating}
-              className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+              className="w-full sm:w-auto inline-flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0 duration-150"
             >
               {isCreating ? (
                 <span className="flex items-center">
@@ -106,7 +113,7 @@ export const Home = () => {
             </button>
             <a
               href="/saved"
-              className="ml-4 inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-base font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+              className="ml-4 inline-flex items-center px-4 py-2 border border-gray-300 shadow-md text-base font-medium rounded-md text-gray-700 bg-white/90 backdrop-blur-sm hover:bg-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all duration-150 hover:shadow-lg transform hover:-translate-y-0.5 active:translate-y-0"
             >
               <svg
                 className="w-5 h-5 mr-2"
@@ -146,11 +153,11 @@ export const Home = () => {
                   value={noteLink}
                   onChange={(e) => setNoteLink(e.target.value)}
                   placeholder="Paste a note link or ID"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-150 hover:shadow-md glass"
                 />
                 <button
                   type="submit"
-                  className="px-6 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all"
+                  className="px-6 py-3 bg-gray-800 text-white rounded-lg hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 transition-all duration-150 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0"
                 >
                   Join
                 </button>
