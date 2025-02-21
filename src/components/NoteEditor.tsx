@@ -61,55 +61,42 @@ export const NoteEditor = () => {
   });
 
   // Handle setting content in editor after mount
+  // Handle content updates
   useEffect(() => {
-    let timeoutId: NodeJS.Timeout;
+    const updateEditorContent = async () => {
+      if (!pendingContent || !editorRef.current) return;
 
-    if (pendingContent && editorRef.current) {
-      console.log("Setting pending content in editor:", {
-        contentLength: pendingContent.length,
-        editorExists: !!editorRef.current
-      });
+      try {
+        // Save current selection
+        const selection = window.getSelection();
+        const savedRange = selection?.rangeCount
+          ? selection.getRangeAt(0).cloneRange()
+          : null;
 
-      // Save current selection
-      const selection = window.getSelection();
-      const savedRange = selection?.rangeCount
-        ? selection.getRangeAt(0).cloneRange()
-        : null;
+        // Set content immediately
+        editorRef.current.innerHTML = pendingContent;
 
-      // Update content with a slight delay to ensure DOM is ready
-      timeoutId = setTimeout(() => {
-        try {
-          if (editorRef.current) {
-            editorRef.current.innerHTML = pendingContent;
-            console.log("Content set successfully");
+        // Wait for next frame to ensure content is rendered
+        await new Promise(resolve => requestAnimationFrame(resolve));
 
-            // Restore selection if it was inside the editor
-            if (
-              savedRange &&
-              editorRef.current.contains(savedRange.commonAncestorContainer)
-            ) {
-              try {
-                selection?.removeAllRanges();
-                selection?.addRange(savedRange);
-              } catch (error) {
-                console.debug("Could not restore selection:", error);
-              }
-            }
-
-            setPendingContent(null);
+        // Restore selection if possible
+        if (savedRange && editorRef.current.contains(savedRange.commonAncestorContainer)) {
+          try {
+            selection?.removeAllRanges();
+            selection?.addRange(savedRange);
+          } catch (error) {
+            console.debug("Could not restore selection:", error);
           }
-        } catch (error) {
-          console.error("Error setting editor content:", error);
         }
-      }, 50);
-    }
 
-    // Cleanup timeout on unmount or when pendingContent changes
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+        console.log("Editor content updated successfully");
+        setPendingContent(null);
+      } catch (error) {
+        console.error("Error updating editor content:", error);
       }
     };
+
+    updateEditorContent();
   }, [pendingContent]);
 
   const loadNote = useCallback(async () => {
@@ -122,38 +109,32 @@ export const NoteEditor = () => {
     try {
       console.log("Loading note with ID:", id);
       const loadedNote = await noteService.getNote(id);
-      console.log("Note loaded:", loadedNote);
 
       // Handle note not found or invalid note data
-      if (!loadedNote) {
-        console.error("Note not found or invalid");
-        toast.error("Note not found or invalid");
-        navigate("/");
+      if (!loadedNote || !loadedNote.content) {
+        const errorMsg = !loadedNote ? "Note not found" : "Note content is empty";
+        console.error(errorMsg);
+        toast.error(errorMsg);
+        if (!loadedNote) navigate("/");
         return;
       }
 
-      // Validate content
-      if (!loadedNote.content) {
-        console.error("Note content is empty");
-        toast.error("Note content is empty");
-        return;
+      // First update the editor content
+      if (editorRef.current) {
+        editorRef.current.innerHTML = loadedNote.content;
       }
 
-      console.log("Setting note content:", {
-        contentLength: loadedNote.content.length,
-        hasContent: !!loadedNote.content
-      });
-
-      // Set note content and update UI
+      // Then update all other state
       setNote(loadedNote);
       setContent(loadedNote.content);
-      setPendingContent(loadedNote.content);
       setShareUrl(window.location.href);
       setLastSaved(new Date(loadedNote.updatedAt));
       setError("");
 
-      // Verify content was set
-      console.log("Content state updated");
+      // Finally set pending content to trigger the content effect
+      setPendingContent(loadedNote.content);
+
+      console.log("Note loaded and content updated");
 
       // Check if note exists in library
       try {
@@ -213,13 +194,24 @@ export const NoteEditor = () => {
   // Handle cleanup and initialization
   useEffect(() => {
     let mounted = true;
+    let socketInitialized = false;
 
     const initializeNote = async () => {
-      if (!mounted) return;
-      await loadNote();
-      
-      if (mounted && id) {
-        socketService.joinNote(id);
+      if (!mounted || !id) return;
+
+      try {
+        // Initialize socket first to ensure real-time updates
+        if (!socketInitialized) {
+          await socketService.joinNote(id);
+          socketInitialized = true;
+          console.log('Socket connection initialized');
+        }
+
+        // Then load the note
+        await loadNote();
+      } catch (error) {
+        console.error('Failed to initialize note:', error);
+        toast.error('Failed to load note. Please refresh the page.');
       }
     };
 
@@ -227,17 +219,22 @@ export const NoteEditor = () => {
 
     return () => {
       mounted = false;
-      if (id) {
+      
+      // Cleanup in order
+      if (id && socketInitialized) {
         socketService.leaveNote(id);
+        console.log('Socket connection cleaned up');
       }
-      // Clear any pending content
-      setPendingContent(null);
-      // Clear editor content
+
+      // Reset editor state
       if (editorRef.current) {
         editorRef.current.innerHTML = '';
       }
+      setPendingContent(null);
+      setContent('');
+      setNote(null);
     };
-  }, [id, loadNote]);
+  }, [id]);
 
   useEffect(() => {
     if (note?.createdAt) {

@@ -26,8 +26,67 @@ const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https:/
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000;
+const CACHE_DURATION = 5000; // 5 seconds
+const REQUEST_TIMEOUT = 30000; // 30 seconds
+const QUEUE_TIMEOUT = 10000; // 10 seconds
+
+// Request queue to prevent concurrent requests to the same resource
+const requestQueue = new Map<string, Promise<any>>();
+
+// Cache for note data
+const noteCache = new Map<string, { data: Note; timestamp: number }>();
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// Queue management
+const addToQueue = async <T>(key: string, operation: () => Promise<T>): Promise<T> => {
+  const existingRequest = requestQueue.get(key);
+  if (existingRequest) {
+    try {
+      return await existingRequest as Promise<T>;
+    } catch (error) {
+      // If existing request fails, remove it and try again
+      requestQueue.delete(key);
+    }
+  }
+
+  let timeoutId: NodeJS.Timeout;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error('Request timeout')), QUEUE_TIMEOUT);
+  });
+
+  const request = Promise.race([
+    operation(),
+    timeoutPromise
+  ]).finally(() => {
+    clearTimeout(timeoutId!);
+    requestQueue.delete(key);
+  });
+
+  requestQueue.set(key, request);
+  return request;
+};
+
+// Cache management
+const getCachedNote = (id: string): Note | null => {
+  const cached = noteCache.get(id);
+  if (!cached) return null;
+
+  const now = Date.now();
+  if (now - cached.timestamp > CACHE_DURATION) {
+    noteCache.delete(id);
+    return null;
+  }
+
+  return cached.data;
+};
+
+const cacheNote = (note: Note) => {
+  noteCache.set(note.id, {
+    data: note,
+    timestamp: Date.now()
+  });
+};
 
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
@@ -70,8 +129,14 @@ const handleResponse = async (response: Response) => {
 };
 
 const fetchWithRetry = async (url: string, options: RequestInit, retries = MAX_RETRIES): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
     
     // Don't retry for these status codes
     if (response.status === 401 || response.status === 403 || response.status === 404) {
@@ -79,17 +144,25 @@ const fetchWithRetry = async (url: string, options: RequestInit, retries = MAX_R
     }
     
     if (!response.ok && retries > 0) {
-      await wait(RETRY_DELAY * (MAX_RETRIES - retries + 1));
+      const delay = RETRY_DELAY * Math.pow(2, MAX_RETRIES - retries); // Exponential backoff
+      await wait(delay);
       return fetchWithRetry(url, options, retries - 1);
     }
     
     return response;
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Request timeout');
+    }
+
     if (retries > 0) {
-      await wait(RETRY_DELAY * (MAX_RETRIES - retries + 1));
+      const delay = RETRY_DELAY * Math.pow(2, MAX_RETRIES - retries); // Exponential backoff
+      await wait(delay);
       return fetchWithRetry(url, options, retries - 1);
     }
     throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 };
 
@@ -137,72 +210,70 @@ export const noteService = {
   },
 
   async getNote(id: string): Promise<Note | null> {
-    try {
-      console.log('Fetching note from API:', id);
-      
-      const response = await fetchWithRetry(`${API_URL}/api/notes/${id}`, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          'Content-Type': 'application/json',
-        },
-        mode: "cors",
-        credentials: "include",
-      });
+    return addToQueue(`note-${id}`, async () => {
+      // Check cache first
+      const cached = getCachedNote(id);
+      if (cached) {
+        console.log("Returning cached note:", id);
+        return cached;
+      }
 
-      // For 404, try to get the error message from the response
-      if (response.status === 404) {
-        try {
-          const errorData = await response.json();
-          console.log('Note not found:', errorData.message);
-        } catch {
-          // Intentionally ignored
+      try {
+        console.log('Fetching note from API:', id);
+        
+        const response = await fetchWithRetry(`${API_URL}/api/notes/${id}`, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          mode: "cors",
+          credentials: "include",
+        });
+
+        // For 404, try to get the error message from the response
+        if (response.status === 404) {
+          try {
+            const errorData = await response.json();
+            console.log('Note not found:', errorData.message);
+          } catch (error) {
+            console.error('Error parsing 404 response:', error);
+          }
+          return null;
         }
-        return null;
-      }
 
-      // For other errors
-      if (!response.ok) {
-        let errorMessage = `HTTP error! status: ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch {
-          // Intentionally ignored
+        // For other errors
+        if (!response.ok) {
+          let errorMessage = `HTTP error! status: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            errorMessage = errorData.message || errorMessage;
+          } catch (error) {
+            console.error('Error parsing error response:', error);
+          }
+          throw new Error(errorMessage);
         }
-        throw new Error(errorMessage);
+
+        const data = await response.json();
+        const note: Note = {
+          id: data.id,
+          content: data.content,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+        };
+
+        // Cache the note
+        cacheNote(note);
+        return note;
+      } catch (error) {
+        console.error('Error fetching note:', error);
+        throw error instanceof Error ? error : new Error('Failed to fetch note');
       }
+    });
+  }
 
-      const data = await response.json();
-      console.log('Raw note data received:', data);
-      
-      // Validate note data
-      if (!data) {
-        console.error('Note data is null or undefined');
-        return null;
-      }
-
-      if (!data.id) {
-        console.error('Note data missing ID:', data);
-        return null;
-      }
-
-      if (typeof data.content !== 'string') {
-        console.error('Note content is not a string:', typeof data.content);
-        return null;
-      }
-
-      const note = {
-        id: data.id,
-        content: data.content,
-        createdAt: data.createdAt || new Date().toISOString(),
-        updatedAt: data.updatedAt || new Date().toISOString()
-      };
-
-      console.log('Processed note data:', note);
-      return note;
-    } catch (error) {
-      console.error("Failed to get note:", error);
       throw error;
     }
   },
