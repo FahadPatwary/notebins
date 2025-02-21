@@ -61,8 +61,25 @@ export const NoteEditor = () => {
   // Handle setting content in editor after mount
   useEffect(() => {
     if (pendingContent && editorRef.current) {
-      console.log("Setting pending content in editor:", pendingContent);
+      console.log("Setting pending content in editor");
+      
+      // Save current selection
+      const selection = window.getSelection();
+      const savedRange = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null;
+      
+      // Update content
       editorRef.current.innerHTML = pendingContent;
+      
+      // Restore selection if it was inside the editor
+      if (savedRange && editorRef.current.contains(savedRange.commonAncestorContainer)) {
+        try {
+          selection?.removeAllRanges();
+          selection?.addRange(savedRange);
+        } catch (error) {
+          console.debug("Could not restore selection:", error);
+        }
+      }
+      
       setPendingContent(null);
     }
   }, [pendingContent]);
@@ -152,10 +169,13 @@ export const NoteEditor = () => {
   }, [note?.createdAt]);
 
   const handleContentChange = useCallback(() => {
-    if (!editorRef.current) return;
+    if (!editorRef.current || !id) return;
 
     const newContent = editorRef.current.innerHTML;
     if (newContent === content) return;
+
+    // Prevent rapid-fire updates
+    if (isLocalUpdate.current) return;
 
     isLocalUpdate.current = true;
     setContent(newContent);
@@ -167,18 +187,28 @@ export const NoteEditor = () => {
 
     // Debounce the update
     updateTimeoutRef.current = setTimeout(async () => {
-      if (!id) return;
-
-      setIsSaving(true);
       try {
-        await noteService.updateNote(id, newContent);
-        socketService.updateNote({
-          noteId: id,
-          content: newContent,
-        });
+        setIsSaving(true);
+        
+        // Update local state first
+        setContent(newContent);
+        
+        // Then update server and notify collaborators
+        await Promise.all([
+          noteService.updateNote(id, newContent),
+          new Promise<void>((resolve) => {
+            socketService.updateNote({
+              noteId: id,
+              content: newContent,
+            });
+            resolve();
+          })
+        ]);
+
         setLastSaved(new Date());
       } catch (error) {
         console.error("Error saving note:", error);
+        toast.error("Failed to save changes. Please try again.");
       } finally {
         setIsSaving(false);
         isLocalUpdate.current = false;
@@ -194,42 +224,57 @@ export const NoteEditor = () => {
         !isLocalUpdate.current &&
         editorRef.current
       ) {
-        // Save the current selection range
-        const selection = window.getSelection();
-        const range = selection?.getRangeAt(0);
-        const startOffset = range?.startOffset;
-        const endOffset = range?.endOffset;
+        try {
+          // Save the current selection and cursor state
+          let savedSelection = null;
+          const selection = window.getSelection();
+          
+          // Only save selection if it's within our editor
+          if (selection?.rangeCount && editorRef.current.contains(selection.anchorNode)) {
+            savedSelection = {
+              range: selection.getRangeAt(0),
+              startContainer: selection.anchorNode,
+              startOffset: selection.anchorOffset,
+              endContainer: selection.focusNode,
+              endOffset: selection.focusOffset
+            };
+          }
 
-        // Update the content in the editor
-        editorRef.current.innerHTML = update.content;
-        setContent(update.content);
-        setLastSaved(new Date());
+          // Update the content
+          editorRef.current.innerHTML = update.content;
+          setContent(update.content);
+          setLastSaved(new Date());
 
-        // Restore cursor position
-        if (
-          selection &&
-          range &&
-          startOffset !== undefined &&
-          endOffset !== undefined &&
-          editorRef.current
-        ) {
-          const newRange = document.createRange();
-          const editor = editorRef.current;
+          // Attempt to restore selection if we had one
+          if (savedSelection) {
+            requestAnimationFrame(() => {
+              try {
+                const newRange = document.createRange();
+                
+                // Find equivalent positions in the new DOM
+                const findEquivalentNode = (oldNode: Node, root: Node): Node => {
+                  if (!oldNode.parentNode) return root;
+                  const parent = oldNode.parentNode;
+                  const index = Array.from(parent.childNodes).indexOf(oldNode);
+                  return root.childNodes[Math.min(index, root.childNodes.length - 1)];
+                };
 
-          // Find the closest node in the updated content to set the range
-          const targetNode =
-            editor.childNodes[
-              Math.min(startOffset, editor.childNodes.length - 1)
-            ];
-          const targetEndNode =
-            editor.childNodes[
-              Math.min(endOffset, editor.childNodes.length - 1)
-            ];
+                const newStartNode = findEquivalentNode(savedSelection.startContainer, editorRef.current);
+                const newEndNode = findEquivalentNode(savedSelection.endContainer, editorRef.current);
 
-          newRange.setStart(targetNode, 0); // Start from the node at the calculated offset
-          newRange.setEnd(targetEndNode, 0); // End at the node at the calculated offset
-          selection.removeAllRanges();
-          selection.addRange(newRange);
+                // Set the range
+                newRange.setStart(newStartNode, Math.min(savedSelection.startOffset, newStartNode.textContent?.length || 0));
+                newRange.setEnd(newEndNode, Math.min(savedSelection.endOffset, newEndNode.textContent?.length || 0));
+
+                selection?.removeAllRanges();
+                selection?.addRange(newRange);
+              } catch (error) {
+                console.debug('Failed to restore selection:', error);
+              }
+            });
+          }
+        } catch (error) {
+          console.error('Error handling note update:', error);
         }
       }
     };
