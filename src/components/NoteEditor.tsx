@@ -74,24 +74,26 @@ export const NoteEditor = () => {
     }
 
     const loadNote = async () => {
+      if (!id) {
+        navigate('/');
+        return;
+      }
+
       try {
         console.log('Loading note with ID:', id);
         const loadedNote = await noteService.getNote(id);
-        console.log('Loaded note:', loadedNote);
 
-        if (!loadedNote || !loadedNote.content) {
-          console.error('Note not found or empty');
-          toast.error('Note not found or could not be loaded');
+        // Handle note not found or invalid note data
+        if (!loadedNote) {
+          toast.error('Note not found');
           navigate('/');
           return;
         }
 
-        // Set note content first
+        // Set note content and update UI
         setNote(loadedNote);
         setContent(loadedNote.content);
         setPendingContent(loadedNote.content);
-        
-        // Update UI state
         setShareUrl(window.location.href);
         setLastSaved(new Date(loadedNote.updatedAt));
         setError('');
@@ -100,7 +102,6 @@ export const NoteEditor = () => {
         try {
           const existingNote = await noteService.checkExistingNote(id);
           if (existingNote) {
-            console.log('Found existing note:', existingNote);
             setExistingNote(existingNote);
             setIsNoteSaved(true);
             toast(
@@ -120,14 +121,8 @@ export const NoteEditor = () => {
           // Don't throw here, as the main note content is already loaded
         }
       } catch (error: any) {
-        console.error("Error loading note:", error);
-        // Only navigate home if it's a critical error
-        if (error?.response?.status === 404 || !id) {
-          toast.error('Note not found');
-          navigate('/');
-        } else {
-          toast.error('Error loading note. Please try again.');
-        }
+        console.error('Error loading note:', error);
+        toast.error(error.message || 'Error loading note. Please try again.');
       }
     };
 

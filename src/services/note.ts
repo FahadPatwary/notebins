@@ -76,10 +76,16 @@ export const noteService = {
         credentials: "include",
       });
 
+      // For 404, try to get the error message from the response
       if (response.status === 404) {
+        try {
+          const errorData = await response.json();
+          console.log('Note not found:', errorData.message);
+        } catch {}
         return null;
       }
 
+      // For other errors
       if (!response.ok) {
         let errorMessage = `HTTP error! status: ${response.status}`;
         try {
@@ -92,14 +98,20 @@ export const noteService = {
       const data = await response.json();
       
       // Validate note data
-      if (!data || typeof data.content !== 'string') {
-        throw new Error('Invalid note data received');
+      if (!data || !data.id || typeof data.content !== 'string') {
+        console.error('Invalid note data:', data);
+        return null;
       }
 
-      return data;
+      return {
+        id: data.id,
+        content: data.content,
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt
+      };
     } catch (error) {
       console.error("Failed to get note:", error);
-      throw error; // Preserve the original error for better handling in the component
+      throw error;
     }
   },
 
