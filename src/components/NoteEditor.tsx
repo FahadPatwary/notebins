@@ -1,8 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "react-hot-toast";
 import { useNavigate, useParams } from "react-router-dom";
+import type { SavedNote } from "../services/note";
 import { noteService } from "../services/note";
 import { socketService } from "../services/socket";
 import { Note } from "../types";
+
+const EXPIRATION_TIME = 3 * 24 * 60 * 60 * 1000; // 3 days in milliseconds
+
+interface FormatState {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  fontSize: string;
+  alignment: string;
+}
 
 export const NoteEditor = () => {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +30,22 @@ export const NoteEditor = () => {
   const editorRef = useRef<HTMLDivElement>(null);
   const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isLocalUpdate = useRef(false);
+  const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
+  const [formatState, setFormatState] = useState<FormatState>({
+    bold: false,
+    italic: false,
+    underline: false,
+    fontSize: "3",
+    alignment: "left",
+  });
+  const [isNoteSaved, setIsNoteSaved] = useState(false);
+  const [showSavePrompt, setShowSavePrompt] = useState(false);
+  const [saveTitle, setSaveTitle] = useState("");
+  const [isConnected, setIsConnected] = useState(
+    socketService.getConnectionStatus()
+  );
+  const [existingNote, setExistingNote] = useState<SavedNote | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!id) {
@@ -36,6 +64,30 @@ export const NoteEditor = () => {
           }
           setShareUrl(window.location.href);
           setLastSaved(new Date(loadedNote.updatedAt));
+
+          // Check if note already exists in library
+          const existingNote = await noteService.checkExistingNote(id);
+          if (existingNote) {
+            console.log("Found existing note:", existingNote.title);
+            setExistingNote(existingNote);
+            setIsNoteSaved(true);
+            setSaveTitle(existingNote.title);
+
+            // Show toast notification for existing note
+            toast(
+              "This note is already saved. Changes will update the existing note.",
+              {
+                icon: "ℹ️",
+                position: "bottom-right",
+                duration: 4000,
+              }
+            );
+          } else {
+            // Reset state for new notes
+            setExistingNote(null);
+            setIsNoteSaved(false);
+            setSaveTitle("");
+          }
         } else {
           navigate("/");
         }
@@ -52,6 +104,27 @@ export const NoteEditor = () => {
       socketService.leaveNote(id);
     };
   }, [id, navigate]);
+
+  useEffect(() => {
+    if (note?.createdAt) {
+      const updateTimer = () => {
+        const now = new Date().getTime();
+        const createdTime = new Date(note.createdAt).getTime();
+        const remaining = EXPIRATION_TIME - (now - createdTime);
+
+        if (remaining <= 0) {
+          setTimeRemaining(0);
+          return;
+        }
+
+        setTimeRemaining(remaining);
+      };
+
+      updateTimer();
+      const timer = setInterval(updateTimer, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [note?.createdAt]);
 
   const handleContentChange = useCallback(() => {
     if (!editorRef.current) return;
@@ -152,29 +225,307 @@ export const NoteEditor = () => {
     );
   };
 
-  const formatText = (command: string, value?: string) => {
+  const formatText = useCallback(
+    (command: string, value?: string) => {
+      document.execCommand(command, false, value);
+
+      // Update format state based on current selection
+      const updateFormatState = () => {
+        setFormatState({
+          bold: document.queryCommandState("bold"),
+          italic: document.queryCommandState("italic"),
+          underline: document.queryCommandState("underline"),
+          fontSize: document.queryCommandValue("fontSize") || "3",
+          alignment: document.queryCommandValue("justify") || "left",
+        });
+      };
+
+      updateFormatState();
+      handleContentChange();
+    },
+    [handleContentChange]
+  );
+
+  // Add selection change listener
+  useEffect(() => {
+    const handleSelectionChange = () => {
+      setFormatState({
+        bold: document.queryCommandState("bold"),
+        italic: document.queryCommandState("italic"),
+        underline: document.queryCommandState("underline"),
+        fontSize: document.queryCommandValue("fontSize") || "3",
+        alignment: document.queryCommandValue("justify") || "left",
+      });
+    };
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    return () =>
+      document.removeEventListener("selectionchange", handleSelectionChange);
+  }, []);
+
+  // Handle double-click on formatting buttons
+  const handleFormatButtonDoubleClick = (command: string, value?: string) => {
+    setFormatState((prev) => ({
+      ...prev,
+      [command]: !prev[command as keyof FormatState],
+    }));
+    // The next typed text will use this format
     document.execCommand(command, false, value);
-    handleContentChange();
   };
 
   const handleSaveToLibrary = async () => {
-    if (!note || !id) return;
+    if (!id) return;
 
-    const title = prompt("Enter a title for this note:", "Untitled Note");
-    if (!title) return;
+    try {
+      // Check if note already exists
+      const existingNote = await noteService.checkExistingNote(id);
+
+      if (existingNote) {
+        // If note exists, update it with existing title
+        handleSaveConfirm(existingNote.title);
+      } else {
+        // If new note, show prompt for title
+        setShowSavePrompt(true);
+      }
+    } catch (error) {
+      console.error("Error checking existing note:", error);
+      setError("Failed to check if note exists. Please try again.");
+    }
+  };
+
+  const handleSaveConfirm = async (title: string) => {
+    if (!id) return;
 
     try {
       setIsSavingToLibrary(true);
-      await noteService.saveNoteToLibrary(title, id, content);
-      setShowSaveSuccess(true);
-      setTimeout(() => setShowSaveSuccess(false), 2000);
-    } catch (error) {
-      console.error("Error saving to library:", error);
-      alert("Failed to save note to library. Please try again.");
-    } finally {
+      setError("");
+
+      // Check if note already exists before saving
+      const existingNote = await noteService.checkExistingNote(id);
+
+      const savedNote = await noteService.saveNoteToLibrary({
+        title: existingNote ? existingNote.title : title,
+        noteId: id,
+        content: content || "",
+      });
+
+      // Update all relevant state
       setIsSavingToLibrary(false);
+      setShowSavePrompt(false);
+      setShowSaveSuccess(true);
+      setIsNoteSaved(true);
+      setExistingNote(savedNote);
+      setSaveTitle(savedNote.title);
+
+      // Show appropriate toast message based on server response
+      toast.success(
+        savedNote.isNew
+          ? "Note saved successfully!"
+          : "Note updated successfully!",
+        {
+          position: "bottom-right",
+          duration: 3000,
+        }
+      );
+
+      // Hide success message after 2 seconds
+      setTimeout(() => {
+        setShowSaveSuccess(false);
+      }, 2000);
+    } catch (err) {
+      setIsSavingToLibrary(false);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Failed to save note. Please try again."
+      );
+      console.error("Error saving note:", err);
     }
   };
+
+  const formatTimeRemaining = (ms: number): string => {
+    const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+    const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+    const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
+
+    if (days > 0) {
+      return `${days}d ${hours}h remaining`;
+    } else if (hours > 0) {
+      return `${hours}h ${minutes}m remaining`;
+    } else {
+      return `${minutes}m remaining`;
+    }
+  };
+
+  // Update the save prompt modal
+  const renderSavePrompt = () => {
+    if (!showSavePrompt) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-md w-full">
+          <h3 className="text-lg font-semibold mb-4">
+            {isNoteSaved ? "Update Note" : "Save Note"}
+          </h3>
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md">
+              {error}
+            </div>
+          )}
+          <input
+            type="text"
+            placeholder="Enter note title"
+            value={saveTitle}
+            onChange={(e) => setSaveTitle(e.target.value)}
+            className="w-full p-2 border rounded mb-4 dark:bg-gray-700 dark:border-gray-600"
+            disabled={isSavingToLibrary}
+          />
+          <div className="flex justify-end space-x-3">
+            <button
+              onClick={() => {
+                setShowSavePrompt(false);
+                setError("");
+              }}
+              className="px-4 py-2 text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+              disabled={isSavingToLibrary}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => handleSaveConfirm(saveTitle)}
+              disabled={!saveTitle.trim() || isSavingToLibrary}
+              className={`px-4 py-2 rounded ${
+                !saveTitle.trim() || isSavingToLibrary
+                  ? "bg-blue-300 cursor-not-allowed"
+                  : "bg-blue-500 hover:bg-blue-600"
+              } text-white flex items-center space-x-2`}
+            >
+              {isSavingToLibrary ? (
+                <>
+                  <span className="animate-spin">⌛</span>
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>{isNoteSaved ? "Update" : "Save"}</span>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Update the save button in the header
+  const renderSaveButton = () => (
+    <button
+      onClick={handleSaveToLibrary}
+      disabled={isSavingToLibrary}
+      className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
+    >
+      {isSavingToLibrary ? (
+        <span className="flex items-center">
+          <svg
+            className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-700"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+          {existingNote ? "Updating..." : "Saving..."}
+        </span>
+      ) : showSaveSuccess ? (
+        <span className="flex items-center">
+          <svg
+            className="w-4 h-4 mr-2 text-green-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 13l4 4L19 7"
+            />
+          </svg>
+          {existingNote ? "Updated!" : "Saved!"}
+        </span>
+      ) : existingNote ? (
+        <span className="flex items-center">
+          <svg
+            className="w-4 h-4 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          Update Note
+        </span>
+      ) : (
+        <span className="flex items-center">
+          <svg
+            className="w-4 h-4 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
+            />
+          </svg>
+          Save to Library
+        </span>
+      )}
+    </button>
+  );
+
+  // Add connection status indicator
+  const renderConnectionStatus = () => (
+    <div
+      className={`fixed bottom-4 right-4 px-3 py-1 rounded-full flex items-center space-x-2 ${
+        isConnected ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"
+      }`}
+    >
+      <div
+        className={`w-2 h-2 rounded-full ${
+          isConnected ? "bg-green-500" : "bg-red-500"
+        }`}
+      />
+      <span className="text-sm">
+        {isConnected ? "Connected" : "Reconnecting..."}
+      </span>
+    </div>
+  );
+
+  // Add connection status monitoring
+  useEffect(() => {
+    const checkConnection = setInterval(() => {
+      setIsConnected(socketService.getConnectionStatus());
+    }, 1000);
+
+    return () => clearInterval(checkConnection);
+  }, []);
 
   if (!note && id) {
     return (
@@ -199,79 +550,23 @@ export const NoteEditor = () => {
                 NoteBins
               </a>
               <div className="h-4 w-px bg-gray-200" />
-              <span className="text-sm text-gray-500 animate-fade hidden sm:inline-block">
-                {isSaving
-                  ? "Saving changes..."
-                  : lastSaved
-                  ? `Last saved ${lastSaved.toLocaleTimeString()}`
-                  : "All changes saved"}
-              </span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={handleSaveToLibrary}
-                disabled={isSavingToLibrary}
-                className="inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all disabled:opacity-50"
-              >
-                {isSavingToLibrary ? (
-                  <span className="flex items-center">
-                    <svg
-                      className="animate-spin -ml-1 mr-2 h-4 w-4 text-gray-700"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                    >
-                      <circle
-                        className="opacity-25"
-                        cx="12"
-                        cy="12"
-                        r="10"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                      />
-                      <path
-                        className="opacity-75"
-                        fill="currentColor"
-                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                      />
-                    </svg>
-                    Saving...
-                  </span>
-                ) : showSaveSuccess ? (
-                  <span className="flex items-center">
-                    <svg
-                      className="w-4 h-4 mr-2 text-green-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 13l4 4L19 7"
-                      />
-                    </svg>
-                    Saved!
-                  </span>
-                ) : (
-                  <span className="flex items-center">
-                    <svg
-                      className="w-4 h-4 mr-2"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z"
-                      />
-                    </svg>
-                    Save to Library
+              <div className="flex items-center space-x-4">
+                <span className="text-sm text-gray-500 animate-fade hidden sm:inline-block">
+                  {isSaving
+                    ? "Saving changes..."
+                    : lastSaved
+                    ? `Last saved ${lastSaved.toLocaleTimeString()}`
+                    : "All changes saved"}
+                </span>
+                {timeRemaining !== null && (
+                  <span className="text-sm text-orange-500">
+                    Expires in: {formatTimeRemaining(timeRemaining)}
                   </span>
                 )}
-              </button>
+              </div>
+            </div>
+            <div className="flex items-center space-x-4">
+              {renderSaveButton()}
               {shareUrl && (
                 <button
                   onClick={copyShareUrl}
@@ -325,8 +620,11 @@ export const NoteEditor = () => {
           <div className="flex items-center space-x-2 overflow-x-auto">
             <button
               onClick={() => formatText("bold")}
-              className="p-2 hover:bg-gray-100 rounded"
-              title="Bold"
+              onDoubleClick={() => handleFormatButtonDoubleClick("bold")}
+              className={`p-2 hover:bg-gray-100 rounded ${
+                formatState.bold ? "bg-gray-200" : ""
+              }`}
+              title="Bold (Double-click to toggle)"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -340,8 +638,11 @@ export const NoteEditor = () => {
             </button>
             <button
               onClick={() => formatText("italic")}
-              className="p-2 hover:bg-gray-100 rounded"
-              title="Italic"
+              onDoubleClick={() => handleFormatButtonDoubleClick("italic")}
+              className={`p-2 hover:bg-gray-100 rounded ${
+                formatState.italic ? "bg-gray-200" : ""
+              }`}
+              title="Italic (Double-click to toggle)"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -355,8 +656,11 @@ export const NoteEditor = () => {
             </button>
             <button
               onClick={() => formatText("underline")}
-              className="p-2 hover:bg-gray-100 rounded"
-              title="Underline"
+              onDoubleClick={() => handleFormatButtonDoubleClick("underline")}
+              className={`p-2 hover:bg-gray-100 rounded ${
+                formatState.underline ? "bg-gray-200" : ""
+              }`}
+              title="Underline (Double-click to toggle)"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -371,6 +675,7 @@ export const NoteEditor = () => {
             <div className="h-4 w-px bg-gray-200" />
             <select
               onChange={(e) => formatText("fontSize", e.target.value)}
+              value={formatState.fontSize}
               className="p-2 border rounded text-sm"
               title="Font Size"
             >
@@ -419,8 +724,11 @@ export const NoteEditor = () => {
             <div className="h-4 w-px bg-gray-200" />
             <button
               onClick={() => formatText("justifyLeft")}
-              className="p-2 hover:bg-gray-100 rounded"
-              title="Align Left"
+              onDoubleClick={() => handleFormatButtonDoubleClick("justifyLeft")}
+              className={`p-2 hover:bg-gray-100 rounded ${
+                formatState.alignment === "left" ? "bg-gray-200" : ""
+              }`}
+              title="Align Left (Double-click to toggle)"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -437,8 +745,13 @@ export const NoteEditor = () => {
             </button>
             <button
               onClick={() => formatText("justifyCenter")}
-              className="p-2 hover:bg-gray-100 rounded"
-              title="Align Center"
+              onDoubleClick={() =>
+                handleFormatButtonDoubleClick("justifyCenter")
+              }
+              className={`p-2 hover:bg-gray-100 rounded ${
+                formatState.alignment === "center" ? "bg-gray-200" : ""
+              }`}
+              title="Align Center (Double-click to toggle)"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -455,8 +768,13 @@ export const NoteEditor = () => {
             </button>
             <button
               onClick={() => formatText("justifyRight")}
-              className="p-2 hover:bg-gray-100 rounded"
-              title="Align Right"
+              onDoubleClick={() =>
+                handleFormatButtonDoubleClick("justifyRight")
+              }
+              className={`p-2 hover:bg-gray-100 rounded ${
+                formatState.alignment === "right" ? "bg-gray-200" : ""
+              }`}
+              title="Align Right (Double-click to toggle)"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -526,6 +844,9 @@ export const NoteEditor = () => {
           </div>
         </div>
       </footer>
+
+      {renderSavePrompt()}
+      {renderConnectionStatus()}
     </div>
   );
 };

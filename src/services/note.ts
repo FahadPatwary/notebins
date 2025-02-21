@@ -1,6 +1,6 @@
 import { Note } from "../types";
 
-interface SavedNote {
+export interface SavedNote {
   _id: string;
   title: string;
   content: string;
@@ -8,6 +8,15 @@ interface SavedNote {
   url: string;
   createdAt: string;
   updatedAt: string;
+  isCompressed?: boolean;
+  contentLength?: number;
+  isNew?: boolean;
+}
+
+interface SaveNoteOptions {
+  title: string;
+  noteId: string;
+  content: string;
 }
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8080";
@@ -98,11 +107,36 @@ export const noteService = {
     }
   },
 
-  async saveNoteToLibrary(
-    title: string,
-    noteId: string,
-    content: string
-  ): Promise<void> {
+  async checkExistingNote(noteId: string): Promise<SavedNote | null> {
+    try {
+      const response = await fetch(
+        `${API_URL}/api/saved-notes/check/${noteId}`,
+        {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+          },
+          mode: "cors",
+          credentials: "include",
+        }
+      );
+
+      if (response.status === 404) {
+        return null;
+      }
+
+      return handleResponse(response);
+    } catch (error) {
+      console.error("Failed to check existing note:", error);
+      return null;
+    }
+  },
+
+  async saveNoteToLibrary({
+    title,
+    noteId,
+    content,
+  }: SaveNoteOptions): Promise<SavedNote> {
     try {
       const response = await fetch(`${API_URL}/api/saved-notes`, {
         method: "POST",
@@ -120,7 +154,14 @@ export const noteService = {
         }),
       });
 
-      await handleResponse(response);
+      const result = await handleResponse(response);
+
+      // If this was an update (status 200) or new creation (status 201)
+      if (response.status === 200 || response.status === 201) {
+        return result;
+      }
+
+      throw new Error("Unexpected response from server");
     } catch (error) {
       console.error("Failed to save note to library:", error);
       if (error instanceof Error) {
