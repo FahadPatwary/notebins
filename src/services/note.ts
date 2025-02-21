@@ -65,8 +65,7 @@ export const noteService = {
   async getNote(id: string): Promise<Note | null> {
     try {
       console.log('Fetching note from API:', id);
-      console.log('Using API URL:', API_URL);
-
+      
       const response = await fetch(`${API_URL}/api/notes/${id}`, {
         method: "GET",
         headers: {
@@ -77,28 +76,30 @@ export const noteService = {
         credentials: "include",
       });
 
-      console.log('API Response status:', response.status);
-
       if (response.status === 404) {
-        console.log('Note not found');
         return null;
       }
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('API error response:', errorText);
-        throw new Error(`API error: ${response.status} - ${errorText}`);
+        let errorMessage = `HTTP error! status: ${response.status}`;
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.message || errorMessage;
+        } catch {}
+        throw new Error(errorMessage);
       }
 
-      const data = await handleResponse(response);
-      console.log('API Response data:', data);
+      const data = await response.json();
+      
+      // Validate note data
+      if (!data || typeof data.content !== 'string') {
+        throw new Error('Invalid note data received');
+      }
+
       return data;
     } catch (error) {
       console.error("Failed to get note:", error);
-      if (error instanceof Error) {
-        throw new Error(`Failed to get note: ${error.message}`);
-      }
-      throw new Error("Failed to get note. Please try again.");
+      throw error; // Preserve the original error for better handling in the component
     }
   },
 

@@ -79,13 +79,14 @@ export const NoteEditor = () => {
         const loadedNote = await noteService.getNote(id);
         console.log('Loaded note:', loadedNote);
 
-        if (!loadedNote) {
-          console.error('Note not found');
+        if (!loadedNote || !loadedNote.content) {
+          console.error('Note not found or empty');
           toast.error('Note not found or could not be loaded');
           navigate('/');
           return;
         }
 
+        // Set note content first
         setNote(loadedNote);
         setContent(loadedNote.content);
         setPendingContent(loadedNote.content);
@@ -118,9 +119,15 @@ export const NoteEditor = () => {
           console.error('Error checking existing note:', error);
           // Don't throw here, as the main note content is already loaded
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error loading note:", error);
-        navigate("/");
+        // Only navigate home if it's a critical error
+        if (error?.response?.status === 404 || !id) {
+          toast.error('Note not found');
+          navigate('/');
+        } else {
+          toast.error('Error loading note. Please try again.');
+        }
       }
     };
 
@@ -742,7 +749,7 @@ export const NoteEditor = () => {
               )}
             </div>
             
-
+if (!loadedNote || !loadedNote.content)
           </div>
         </div>
       </header>
