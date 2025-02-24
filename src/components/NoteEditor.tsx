@@ -281,20 +281,27 @@ export const NoteEditor = () => {
                 ): Node => {
                   if (!oldNode.parentNode) return root;
                   const parent = oldNode.parentNode;
-                  const index = Array.from(parent.childNodes).indexOf(oldNode);
-                  return root.childNodes[
-                    Math.min(index, root.childNodes.length - 1)
-                  ];
+                  const index = Array.from(parent.childNodes).indexOf(
+                    oldNode as ChildNode
+                  );
+                  const childNodes = Array.from(root.childNodes);
+                  return (
+                    childNodes[Math.min(index, childNodes.length - 1)] || root
+                  );
                 };
 
-                const newStartNode = findEquivalentNode(
-                  savedSelection.startContainer,
-                  editorRef.current
-                );
-                const newEndNode = findEquivalentNode(
-                  savedSelection.endContainer,
-                  editorRef.current
-                );
+                const newStartNode = savedSelection.startContainer
+                  ? findEquivalentNode(
+                      savedSelection.startContainer,
+                      editorRef.current!
+                    )
+                  : editorRef.current!;
+                const newEndNode = savedSelection.endContainer
+                  ? findEquivalentNode(
+                      savedSelection.endContainer,
+                      editorRef.current!
+                    )
+                  : editorRef.current!;
 
                 // Set the range
                 newRange.setStart(
