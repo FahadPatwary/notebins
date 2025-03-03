@@ -44,4 +44,4 @@ coverage/
 .eslintcache
 
 # Ignore the server folder
-notebinsBackend/
+backend/
