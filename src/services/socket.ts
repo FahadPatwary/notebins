@@ -2,7 +2,7 @@ import type { Socket } from "socket.io-client";
 import { io } from "socket.io-client";
 import { NoteUpdate } from "../types";
 
-const SOCKET_URL = import.meta.env.VITE_API_URL || "http://localhost:10000";
+const SOCKET_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://notebinsbackendserver.azurewebsites.net" : "http://localhost:10000");
 const RECONNECTION_ATTEMPTS = 10;
 const DEBOUNCE_TIME = 300; // 300ms debounce for updates
 

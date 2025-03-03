@@ -5,7 +5,7 @@
     "rewrites": [
       { 
         "source": "/api/:path*", 
-        "destination": "https://notebinsbackend.onrender.com/api/:path*" 
+        "destination": "https://notebinsbackendserver.azurewebsites.net/api/:path*" 
       },
       { 
         "source": "/(.*)", 

@@ -22,7 +22,7 @@ interface SaveNoteParams {
   password?: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://notebinsbackend.onrender.com" : "http://localhost:10000");
+const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://notebinsbackendserver.azurewebsites.net" : "http://localhost:10000");
 
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
