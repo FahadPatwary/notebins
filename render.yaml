@@ -2,14 +2,16 @@ services:
   - type: web
     name: notebins-backend
     env: node
-    buildCommand: cd server && npm install && npm run build
-    startCommand: cd server && npm start
+    buildCommand: cd backend && npm install && npm run build
+    startCommand: cd backend && npm start
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
-      - key: CLIENT_URL
-        value: https://www.notebins.me
+      - key: CORS_ORIGIN
+        value: https://notebins.me
       - key: MONGODB_URI
-        value: mongodb+srv://fahadpatwary:CBdglAXg0FlYKVvd@savednote.iji1p.mongodb.net/notebins?retryWrites=true&w=majority&appName=SavedNote
+        value: mongodb+srv://fahadpatwary:HNDJsQTA3E8W9SVq@savednote.iji1p.mongodb.net/?retryWrites=true&w=majority&appName=SavedNote
+      - key: NOTE_EXPIRATION_DAYS
+        value: 3

@@ -8,4 +8,4 @@
   publish = "dist"
 
 [context.production.environment]
-  VITE_API_URL = "https://notebinsbackendserver.azurewebsites.net"
+  VITE_API_URL = "https://notebinsbackend.onrender.com"

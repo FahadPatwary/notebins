@@ -22,7 +22,11 @@ interface SaveNoteParams {
   password?: string;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? "https://notebinsbackendserver.azurewebsites.net" : "http://localhost:10000");
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD
+    ? "https://notebinsbackendserver.azurewebsites.net"
+    : "http://localhost:10000");
 
 const handleResponse = async (response: Response) => {
   if (!response.ok) {
@@ -64,13 +68,13 @@ export const noteService = {
 
   async getNote(id: string): Promise<Note | null> {
     try {
-      console.log('Fetching note from API:', id);
-      
+      console.log("Fetching note from API:", id);
+
       const response = await fetch(`${API_URL}/api/notes/${id}`, {
         method: "GET",
         headers: {
           Accept: "application/json",
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         mode: "cors",
         credentials: "include",
@@ -80,7 +84,7 @@ export const noteService = {
       if (response.status === 404) {
         try {
           const errorData = await response.json();
-          console.log('Note not found:', errorData.message);
+          console.log("Note not found:", errorData.message);
         } catch {}
         return null;
       }
@@ -96,10 +100,10 @@ export const noteService = {
       }
 
       const data = await response.json();
-      
+
       // Validate note data
-      if (!data || !data.id || typeof data.content !== 'string') {
-        console.error('Invalid note data:', data);
+      if (!data || !data.id || typeof data.content !== "string") {
+        console.error("Invalid note data:", data);
         return null;
       }
 
@@ -107,7 +111,7 @@ export const noteService = {
         id: data.id,
         content: data.content,
         createdAt: data.createdAt,
-        updatedAt: data.updatedAt
+        updatedAt: data.updatedAt,
       };
     } catch (error) {
       console.error("Failed to get note:", error);
