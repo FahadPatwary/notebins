@@ -25,7 +25,7 @@ interface SaveNoteParams {
 const API_URL =
   import.meta.env.VITE_API_URL ||
   (import.meta.env.PROD
-    ? "https://notebinsbackendserver.azurewebsites.net"
+    ? "https://notebinsbackend.onrender.com"
     : "http://localhost:10000");
 
 const handleResponse = async (response: Response) => {
